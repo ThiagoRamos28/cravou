@@ -40,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local dev tooling (skills, agent scratch) — not app code
+/.claude/skills/
+/.superpowers/
+__pycache__/
+*.pyc
