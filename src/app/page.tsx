@@ -1,17 +1,19 @@
 import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
+import { Hero } from "@/components/landing/hero";
+import { Features } from "@/components/landing/features";
+import { CtaSection } from "@/components/landing/cta-section";
 
 export default function Home() {
   return (
-    <div className="min-h-dvh bg-background text-foreground">
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <SiteHeader />
-      <main className="mx-auto flex max-w-3xl flex-col items-center gap-6 px-4 py-20 text-center">
-        <h1 className="text-balance text-4xl font-extrabold sm:text-5xl">
-          Cravou! — o bolão da Copa
-        </h1>
-        <p className="max-w-prose text-lg text-muted-foreground">
-          Registre seus palpites, acompanhe os jogos e suba no ranking.
-        </p>
+      <main className="flex-1">
+        <Hero />
+        <Features />
+        <CtaSection />
       </main>
+      <SiteFooter />
     </div>
   );
 }
