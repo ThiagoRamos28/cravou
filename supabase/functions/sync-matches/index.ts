@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { fixtureToRow, resultToRow, type MatchRow } from "../_shared/fixtures.ts";
+import { fixtureToRow, resultToRow, type MatchRow } from "../_shared/fixtures";
 
 async function fsGet(path: string): Promise<unknown[]> {
   const host = Deno.env.get("RAPIDAPI_HOST") ?? "flashscore4.p.rapidapi.com";

@@ -46,3 +46,6 @@ next-env.d.ts
 /.superpowers/
 __pycache__/
 *.pyc
+
+.vercel
+.env*.local
