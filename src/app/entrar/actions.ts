@@ -1,0 +1,68 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import {
+  credenciaisSchema,
+  magicLinkSchema,
+  validar,
+} from "@/lib/auth/validation";
+
+type EstadoAuth = { erro?: string; ok?: string };
+
+export async function entrarComSenha(
+  _prev: EstadoAuth,
+  formData: FormData
+): Promise<EstadoAuth> {
+  const v = validar(credenciaisSchema, {
+    email: formData.get("email"),
+    senha: formData.get("senha"),
+  });
+  if (!v.sucesso) return { erro: v.erro };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({
+    email: v.dados.email,
+    password: v.dados.senha,
+  });
+  if (error) return { erro: "E-mail ou senha incorretos." };
+
+  redirect("/onboarding");
+}
+
+export async function cadastrar(
+  _prev: EstadoAuth,
+  formData: FormData
+): Promise<EstadoAuth> {
+  const v = validar(credenciaisSchema, {
+    email: formData.get("email"),
+    senha: formData.get("senha"),
+  });
+  if (!v.sucesso) return { erro: v.erro };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signUp({
+    email: v.dados.email,
+    password: v.dados.senha,
+  });
+  if (error) return { erro: "Não foi possível criar a conta. Tente outro e-mail." };
+
+  redirect("/onboarding");
+}
+
+export async function enviarMagicLink(
+  _prev: EstadoAuth,
+  formData: FormData
+): Promise<EstadoAuth> {
+  const v = validar(magicLinkSchema, { email: formData.get("email") });
+  if (!v.sucesso) return { erro: v.erro };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithOtp({
+    email: v.dados.email,
+    options: { emailRedirectTo: undefined },
+  });
+  if (error) return { erro: "Não foi possível enviar o link. Tente novamente." };
+
+  return { ok: "Enviamos um link de acesso para o seu e-mail." };
+}
