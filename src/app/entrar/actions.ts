@@ -41,14 +41,16 @@ export async function cadastrar(
   });
   if (!v.sucesso) return { erro: v.erro };
 
+  const origin = (await headers()).get("origin") ?? "";
   const supabase = await createClient();
   const { error } = await supabase.auth.signUp({
     email: v.dados.email,
     password: v.dados.senha,
+    options: { emailRedirectTo: `${origin}/auth/callback` },
   });
   if (error) return { erro: "Não foi possível criar a conta. Tente outro e-mail." };
 
-  redirect("/onboarding");
+  return { ok: "Conta criada! Confirme pelo link que enviamos ao seu e-mail." };
 }
 
 export async function enviarMagicLink(
