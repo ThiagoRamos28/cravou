@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { Reveal } from "@/components/motion/reveal";
 import { buttonVariants } from "@/components/ui/button";
 
-export function CtaSection() {
+export function CtaSection({ logado = false }: { logado?: boolean }) {
   return (
     <section className="mx-auto max-w-6xl px-4 pb-24 sm:px-6">
       <Reveal>
@@ -17,13 +17,15 @@ export function CtaSection() {
               Bora cravar o próximo placar?
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-primary-foreground/80">
-              Crie sua conta em segundos e comece a palpitar nos jogos de hoje.
+              {logado
+                ? "Seus palpites te esperam. Veja os próximos jogos e crave o placar."
+                : "Crie sua conta em segundos e comece a palpitar nos jogos de hoje."}
             </p>
             <Link
-              href="/entrar"
+              href={logado ? "/jogos" : "/entrar"}
               className={`${buttonVariants("cta", "lg")} mt-8`}
             >
-              Criar minha conta
+              {logado ? "Ver os jogos" : "Criar minha conta"}
               <ArrowRight className="h-5 w-5" aria-hidden="true" />
             </Link>
           </div>
