@@ -54,7 +54,7 @@ export function Hero() {
           variants={variants}
           className="max-w-4xl text-balance font-display text-5xl font-bold uppercase leading-[0.95] tracking-tight sm:text-7xl"
         >
-          Deu o jogo?{" "}
+          Acertou o placar?{" "}
           <span className="text-primary">Você</span>{" "}
           <span className="text-accent">cravou!</span>
         </motion.h1>
