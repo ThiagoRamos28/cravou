@@ -2,23 +2,35 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Trazer os jogos da Copa 2026 (e seus placares) da API-Football para o banco automaticamente via cron, exibi-los numa página `/jogos`, com fallback manual de placar pelo admin.
+**Goal:** Trazer os jogos da Copa 2026 (e seus placares) da API do FlashScore (via RapidAPI) para o banco automaticamente via cron, exibi-los numa página `/jogos`, com fallback manual de placar pelo admin.
 
-**Architecture:** Uma Edge Function `sync-matches` (Deno) busca os fixtures na API-Football, mapeia para linhas da tabela `matches` e faz upsert via service role, pulando jogos que o admin corrigiu manualmente (`placar_manual`). `pg_cron` chama a função em intervalo, autenticada por um header `x-cron-secret`. A app Next.js lê `matches` (RLS de leitura para autenticados) numa página `/jogos`, e um painel `/admin` (gating por `is_admin`) permite corrigir placar e disparar a sync.
+**Architecture:** Uma Edge Function `sync-matches` (Deno) busca os endpoints `fixtures` (próximos) e `results` (encerrados) do FlashScore, mapeia para linhas da tabela `matches` e faz upsert via service role, pulando jogos que o admin corrigiu manualmente (`placar_manual`). `pg_cron` chama a função em intervalo, autenticada por header `x-cron-secret`. A app Next.js lê `matches` numa página `/jogos`, e um painel `/admin` (gating `is_admin`) corrige placar e dispara a sync.
 
-**Tech Stack:** Next.js 16 (App Router), Supabase (Postgres + RLS + Edge Functions + pg_cron + pg_net), Deno (Edge Function), API-Football (api-sports.io), Vitest.
+**Tech Stack:** Next.js 16 (App Router), Supabase (Postgres + RLS + Edge Functions + pg_cron + pg_net), Deno (Edge Function), FlashScore API via RapidAPI, Vitest.
 
 ## Global Constraints
 
 - Nome exibido: **Cravou!** (com ponto de exclamação). UI em Português do Brasil.
-- ⚠️ Next.js 16: convenção de proxy (não middleware); confirmar APIs em `node_modules/next/dist/docs/` quando em dúvida. `cookies()` é assíncrono.
-- Segredos nunca no client. `API_FOOTBALL_KEY`, `CRON_SECRET` e o service role vivem só na Edge Function / secrets do Supabase (ou env server na Vercel). Ao browser, só `NEXT_PUBLIC_*`.
-- Fonte: **api-sports.io direto** — base `https://v3.football.api-sports.io`, header `x-apisports-key: <chave>`.
-- Copa do Mundo 2026 na API-Football: `league=1`, `season=2026` (configuráveis por env da função; confirmar na Task 4).
+- ⚠️ Next.js 16: convenção `proxy` (não middleware). `cookies()` é assíncrono.
+- Segredos nunca no client. `RAPIDAPI_KEY`, `CRON_SECRET` e o service role vivem só na Edge Function / secrets do Supabase (ou env server na Vercel). Ao browser, só `NEXT_PUBLIC_*`.
+- **Fonte: FlashScore via RapidAPI** — host `flashscore4.p.rapidapi.com`, base `https://flashscore4.p.rapidapi.com/api/flashscore/v2`, headers `x-rapidapi-key` + `x-rapidapi-host`.
+- **Identificadores da Copa 2026** (descobertos via `GET /tournaments/ids?tournament_url=%2Ffootball%2Fworld%2Fworld-cup%2F`): `tournament_template_id=lvUBR5F8`, `season_id=185`, `tournament_stage_id=SbLsX4y7`. Ficam como secrets da função (ajustáveis sem redeploy).
+- `match_id` do FlashScore é **string** → coluna `api_fixture_id` é **TEXT**.
+- Status interno: `agendado` | `ao_vivo` | `finalizado`. Nesta fonte: `fixtures`→`agendado`, `results`→`finalizado` (ao_vivo fica para refino futuro).
+- A API não fornece fase/rodada nesses endpoints → colunas `fase`/`rodada` ficam com default (`grupos`/``), refináveis depois pelo admin.
 - Pontuação dos palpites é da Fase 4 — **não** calcular pontos aqui.
 - Reusar o design system (`Button`/`buttonVariants`, tokens, `lucide-react`); dark E light.
-- Status interno de um jogo: `agendado` | `ao_vivo` | `finalizado`.
 - Commits: um por task; mensagem termina com `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+
+### Formato real observado da API (referência)
+
+`GET /tournaments/fixtures?tournament_template_id=lvUBR5F8&season_id=185&tournament_stage_id=SbLsX4y7` → **array** de:
+```json
+{ "match_id": "jRyHEZGP", "timestamp": 1782327600,
+  "home_team": { "team_id": "fqe7WYTr", "name": "Bosnia & Herzegovina", "small_image_path": "https://.../x.png" },
+  "away_team": { "team_id": "zqzHL77i", "name": "Qatar", "small_image_path": "https://.../y.png" } }
+```
+`GET /tournaments/results?...` → **array** igual, porém com `"scores": { "home": 1, "away": 0 }`.
 
 ---
 
@@ -29,7 +41,7 @@
 
 **Interfaces:**
 - Consumes: tabela `profiles` (coluna `is_admin`) da Fase 1.
-- Produces: tabela `public.matches` com unique em `api_fixture_id`; RLS (leitura para autenticados; escrita só para admins — o service role da Edge Function ignora RLS).
+- Produces: tabela `public.matches` com `api_fixture_id text unique`; RLS (leitura para autenticados; escrita só admins — o service role ignora RLS).
 
 - [ ] **Step 1: Escrever a migração**
 
@@ -38,7 +50,7 @@ Create `supabase/migrations/0002_matches.sql`:
 ```sql
 create table if not exists public.matches (
   id uuid primary key default gen_random_uuid(),
-  api_fixture_id bigint unique,
+  api_fixture_id text unique,
   fase text not null default 'grupos',
   rodada text not null default '',
   time_casa text not null,
@@ -58,13 +70,11 @@ create index if not exists matches_inicio_em_idx on public.matches (inicio_em);
 
 alter table public.matches enable row level security;
 
--- Leitura: qualquer usuário autenticado vê os jogos
 create policy "matches_select_authenticated"
   on public.matches for select
   to authenticated
   using (true);
 
--- Escrita manual: apenas admins (o service role da Edge Function ignora RLS)
 create policy "matches_insert_admin"
   on public.matches for insert
   to authenticated
@@ -83,9 +93,7 @@ create policy "matches_update_admin"
   ));
 ```
 
-- [ ] **Step 2: Aplicar e verificar** (o controlador aplica via API/MCP do Supabase; sem ação local de banco)
-
-Verificação (rode no SQL Editor ou via API de Management):
+- [ ] **Step 2: Aplicar e verificar** (controlador aplica via API/MCP do Supabase; sem ação local de banco)
 
 ```sql
 select count(*) tabela from information_schema.tables
@@ -93,33 +101,35 @@ select count(*) tabela from information_schema.tables
 select count(*) policies from pg_policies
   where schemaname='public' and tablename='matches';
 ```
-
 Expected: `tabela=1`, `policies=3`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add supabase/migrations/0002_matches.sql
-git commit -m "feat: migracao matches com RLS de leitura e escrita admin
+git commit -m "feat: migracao matches (api_fixture_id text) com RLS
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 2: Módulo de mapeamento de fixtures (puro) + testes
+### Task 2: Módulo de mapeamento de jogos (puro) + testes
 
 **Files:**
 - Create: `supabase/functions/_shared/fixtures.ts`
 - Create: `supabase/functions/_shared/__tests__/fixtures.test.ts`
 
 **Interfaces:**
-- Consumes: nada (TypeScript puro, sem imports de Deno — para ser testável pelo Vitest).
+- Consumes: nada (TypeScript puro, sem imports de Deno — testável pelo Vitest).
 - Produces:
-  - `type MatchRow = { api_fixture_id: number; fase: string; rodada: string; time_casa: string; time_fora: string; bandeira_casa: string | null; bandeira_fora: string | null; inicio_em: string; status: "agendado"|"ao_vivo"|"finalizado"; placar_casa: number | null; placar_fora: number | null }`
-  - `mapStatus(short: string): "agendado"|"ao_vivo"|"finalizado"`
-  - `mapRound(round: string): { fase: string; rodada: string }`
-  - `toMatchRow(fixture: ApiFixture): MatchRow`
+  - `type FsTeam = { team_id: string; name: string; small_image_path: string | null }`
+  - `type FsFixture = { match_id: string; timestamp: number; home_team: FsTeam; away_team: FsTeam }`
+  - `type FsResult = FsFixture & { scores: { home: number | null; away: number | null } }`
+  - `type MatchRow = { api_fixture_id: string; time_casa: string; time_fora: string; bandeira_casa: string | null; bandeira_fora: string | null; inicio_em: string; status: "agendado"|"finalizado"; placar_casa: number | null; placar_fora: number | null }`
+  - `tsToIso(ts: number): string`
+  - `fixtureToRow(f: FsFixture): MatchRow`
+  - `resultToRow(r: FsResult): MatchRow`
 
 - [ ] **Step 1: Escrever os testes (falhando)**
 
@@ -127,57 +137,47 @@ Create `supabase/functions/_shared/__tests__/fixtures.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { mapStatus, mapRound, toMatchRow } from "../fixtures";
+import { tsToIso, fixtureToRow, resultToRow } from "../fixtures";
 
-describe("mapStatus", () => {
-  it("mapeia finalizados", () => {
-    for (const s of ["FT", "AET", "PEN"]) expect(mapStatus(s)).toBe("finalizado");
-  });
-  it("mapeia ao vivo", () => {
-    for (const s of ["1H", "HT", "2H", "ET", "P", "LIVE"]) expect(mapStatus(s)).toBe("ao_vivo");
-  });
-  it("o resto vira agendado", () => {
-    for (const s of ["NS", "TBD", "PST", "CANC"]) expect(mapStatus(s)).toBe("agendado");
+const home = { team_id: "h", name: "Brasil", small_image_path: "https://x/br.png" };
+const away = { team_id: "a", name: "Sérvia", small_image_path: null };
+
+describe("tsToIso", () => {
+  it("converte unix seconds para ISO UTC", () => {
+    expect(tsToIso(1782327600)).toBe(new Date(1782327600 * 1000).toISOString());
   });
 });
 
-describe("mapRound", () => {
-  it("fase de grupos com número da rodada", () => {
-    expect(mapRound("Group Stage - 2")).toEqual({ fase: "grupos", rodada: "2" });
-  });
-  it("mata-mata", () => {
-    expect(mapRound("Round of 16")).toEqual({ fase: "oitavas", rodada: "" });
-    expect(mapRound("Quarter-finals")).toEqual({ fase: "quartas", rodada: "" });
-    expect(mapRound("Semi-finals")).toEqual({ fase: "semi", rodada: "" });
-    expect(mapRound("3rd Place Final")).toEqual({ fase: "terceiro", rodada: "" });
-    expect(mapRound("Final")).toEqual({ fase: "final", rodada: "" });
-  });
-});
-
-describe("toMatchRow", () => {
-  it("mapeia um fixture finalizado", () => {
-    const fixture = {
-      fixture: { id: 1234, date: "2026-06-20T19:00:00+00:00", status: { short: "FT" } },
-      league: { round: "Group Stage - 1" },
-      teams: {
-        home: { name: "Brazil", logo: "https://x/br.png" },
-        away: { name: "Serbia", logo: "https://x/rs.png" },
-      },
-      goals: { home: 2, away: 0 },
-    };
-    expect(toMatchRow(fixture)).toEqual({
-      api_fixture_id: 1234,
-      fase: "grupos",
-      rodada: "1",
-      time_casa: "Brazil",
-      time_fora: "Serbia",
+describe("fixtureToRow", () => {
+  it("mapeia um jogo futuro como agendado sem placar", () => {
+    const row = fixtureToRow({ match_id: "m1", timestamp: 1782327600, home_team: home, away_team: away });
+    expect(row).toEqual({
+      api_fixture_id: "m1",
+      time_casa: "Brasil",
+      time_fora: "Sérvia",
       bandeira_casa: "https://x/br.png",
-      bandeira_fora: "https://x/rs.png",
-      inicio_em: "2026-06-20T19:00:00+00:00",
-      status: "finalizado",
-      placar_casa: 2,
-      placar_fora: 0,
+      bandeira_fora: null,
+      inicio_em: new Date(1782327600 * 1000).toISOString(),
+      status: "agendado",
+      placar_casa: null,
+      placar_fora: null,
     });
+  });
+});
+
+describe("resultToRow", () => {
+  it("mapeia um resultado como finalizado com placar", () => {
+    const row = resultToRow({
+      match_id: "m2",
+      timestamp: 1782266400,
+      home_team: home,
+      away_team: away,
+      scores: { home: 2, away: 0 },
+    });
+    expect(row.status).toBe("finalizado");
+    expect(row.placar_casa).toBe(2);
+    expect(row.placar_fora).toBe(0);
+    expect(row.api_fixture_id).toBe("m2");
   });
 });
 ```
@@ -192,67 +192,60 @@ Expected: FAIL — `../fixtures` não existe.
 Create `supabase/functions/_shared/fixtures.ts`:
 
 ```ts
-export type ApiFixture = {
-  fixture: { id: number; date: string; status: { short: string } };
-  league: { round: string };
-  teams: {
-    home: { name: string; logo: string | null };
-    away: { name: string; logo: string | null };
-  };
-  goals: { home: number | null; away: number | null };
+export type FsTeam = {
+  team_id: string;
+  name: string;
+  small_image_path: string | null;
+};
+
+export type FsFixture = {
+  match_id: string;
+  timestamp: number;
+  home_team: FsTeam;
+  away_team: FsTeam;
+};
+
+export type FsResult = FsFixture & {
+  scores: { home: number | null; away: number | null };
 };
 
 export type MatchRow = {
-  api_fixture_id: number;
-  fase: string;
-  rodada: string;
+  api_fixture_id: string;
   time_casa: string;
   time_fora: string;
   bandeira_casa: string | null;
   bandeira_fora: string | null;
   inicio_em: string;
-  status: "agendado" | "ao_vivo" | "finalizado";
+  status: "agendado" | "finalizado";
   placar_casa: number | null;
   placar_fora: number | null;
 };
 
-const FINALIZADO = new Set(["FT", "AET", "PEN"]);
-const AO_VIVO = new Set(["1H", "HT", "2H", "ET", "BT", "P", "LIVE"]);
-
-export function mapStatus(short: string): MatchRow["status"] {
-  if (FINALIZADO.has(short)) return "finalizado";
-  if (AO_VIVO.has(short)) return "ao_vivo";
-  return "agendado";
+export function tsToIso(ts: number): string {
+  return new Date(ts * 1000).toISOString();
 }
 
-export function mapRound(round: string): { fase: string; rodada: string } {
-  const r = round.toLowerCase();
-  if (r.includes("group")) {
-    const m = round.match(/(\d+)\s*$/);
-    return { fase: "grupos", rodada: m ? m[1] : "" };
-  }
-  if (r.includes("round of 16")) return { fase: "oitavas", rodada: "" };
-  if (r.includes("quarter")) return { fase: "quartas", rodada: "" };
-  if (r.includes("semi")) return { fase: "semi", rodada: "" };
-  if (r.includes("3rd place") || r.includes("third place")) return { fase: "terceiro", rodada: "" };
-  if (r.includes("final")) return { fase: "final", rodada: "" };
-  return { fase: "grupos", rodada: "" };
-}
-
-export function toMatchRow(f: ApiFixture): MatchRow {
-  const { fase, rodada } = mapRound(f.league.round);
+function base(f: FsFixture) {
   return {
-    api_fixture_id: f.fixture.id,
-    fase,
-    rodada,
-    time_casa: f.teams.home.name,
-    time_fora: f.teams.away.name,
-    bandeira_casa: f.teams.home.logo,
-    bandeira_fora: f.teams.away.logo,
-    inicio_em: f.fixture.date,
-    status: mapStatus(f.fixture.status.short),
-    placar_casa: f.goals.home,
-    placar_fora: f.goals.away,
+    api_fixture_id: f.match_id,
+    time_casa: f.home_team.name,
+    time_fora: f.away_team.name,
+    bandeira_casa: f.home_team.small_image_path,
+    bandeira_fora: f.away_team.small_image_path,
+    inicio_em: tsToIso(f.timestamp),
+  };
+}
+
+export function fixtureToRow(f: FsFixture): MatchRow {
+  return { ...base(f), status: "agendado", placar_casa: null, placar_fora: null };
+}
+
+export function resultToRow(r: FsResult): MatchRow {
+  return {
+    ...base(r),
+    status: "finalizado",
+    placar_casa: r.scores?.home ?? null,
+    placar_fora: r.scores?.away ?? null,
   };
 }
 ```
@@ -260,13 +253,13 @@ export function toMatchRow(f: ApiFixture): MatchRow {
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npm test -- fixtures`
-Expected: PASS (3 blocos / 7 asserts).
+Expected: PASS (3 blocos).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add supabase/functions/_shared/fixtures.ts supabase/functions/_shared/__tests__/fixtures.test.ts
-git commit -m "feat: mapeamento puro de fixtures da API-Football
+git commit -m "feat: mapeamento puro de jogos do FlashScore
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
@@ -280,10 +273,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `supabase/functions/sync-matches/deno.json`
 
 **Interfaces:**
-- Consumes: `toMatchRow`, `MatchRow` de `../_shared/fixtures.ts`; secrets `API_FOOTBALL_KEY`, `API_FOOTBALL_LEAGUE`, `API_FOOTBALL_SEASON`, `CRON_SECRET`; env auto `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
-- Produces: endpoint HTTP que, autenticado por header `x-cron-secret`, busca fixtures e faz upsert em `matches`, retornando JSON `{ ok, total, upserted, pulados_manual }`.
+- Consumes: `fixtureToRow`, `resultToRow`, `MatchRow` de `../_shared/fixtures.ts`; secrets `RAPIDAPI_KEY`, `RAPIDAPI_HOST`, `FS_TEMPLATE_ID`, `FS_SEASON_ID`, `FS_STAGE_ID`, `CRON_SECRET`; env auto `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+- Produces: endpoint HTTP que, autenticado por `x-cron-secret`, busca fixtures+results, faz upsert em `matches` (pulando `placar_manual`), e retorna `{ ok, total, upserted, pulados_manual }`.
 
-- [ ] **Step 1: Escrever o config do Deno**
+- [ ] **Step 1: Config do Deno**
 
 Create `supabase/functions/sync-matches/deno.json`:
 
@@ -301,10 +294,28 @@ Create `supabase/functions/sync-matches/index.ts`:
 
 ```ts
 import { createClient } from "@supabase/supabase-js";
-import { toMatchRow, type MatchRow } from "../_shared/fixtures.ts";
+import { fixtureToRow, resultToRow, type MatchRow } from "../_shared/fixtures.ts";
+
+async function fsGet(path: string): Promise<unknown[]> {
+  const host = Deno.env.get("RAPIDAPI_HOST") ?? "flashscore4.p.rapidapi.com";
+  const template = Deno.env.get("FS_TEMPLATE_ID")!;
+  const season = Deno.env.get("FS_SEASON_ID")!;
+  const stage = Deno.env.get("FS_STAGE_ID")!;
+  const url =
+    `https://${host}/api/flashscore/v2/tournaments/${path}` +
+    `?tournament_template_id=${template}&season_id=${season}&tournament_stage_id=${stage}`;
+  const resp = await fetch(url, {
+    headers: {
+      "x-rapidapi-host": host,
+      "x-rapidapi-key": Deno.env.get("RAPIDAPI_KEY")!,
+    },
+  });
+  if (!resp.ok) throw new Error(`FlashScore ${path} ${resp.status}`);
+  const data = await resp.json();
+  return Array.isArray(data) ? data : [];
+}
 
 Deno.serve(async (req) => {
-  // Autenticação simples por segredo compartilhado (cron + admin enviam este header).
   const segredo = req.headers.get("x-cron-secret");
   if (!segredo || segredo !== Deno.env.get("CRON_SECRET")) {
     return new Response(JSON.stringify({ ok: false, erro: "não autorizado" }), {
@@ -313,30 +324,29 @@ Deno.serve(async (req) => {
     });
   }
 
-  const apiKey = Deno.env.get("API_FOOTBALL_KEY")!;
-  const league = Deno.env.get("API_FOOTBALL_LEAGUE") ?? "1";
-  const season = Deno.env.get("API_FOOTBALL_SEASON") ?? "2026";
-
-  const resp = await fetch(
-    `https://v3.football.api-sports.io/fixtures?league=${league}&season=${season}`,
-    { headers: { "x-apisports-key": apiKey } }
-  );
-  if (!resp.ok) {
-    return new Response(
-      JSON.stringify({ ok: false, erro: `API-Football ${resp.status}` }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
-    );
+  let rows: MatchRow[];
+  try {
+    const [fixtures, results] = await Promise.all([
+      fsGet("fixtures"),
+      fsGet("results"),
+    ]);
+    // results sobrescrevem fixtures para o mesmo match_id (têm placar final)
+    const porId = new Map<string, MatchRow>();
+    for (const f of fixtures) porId.set((f as { match_id: string }).match_id, fixtureToRow(f as never));
+    for (const r of results) porId.set((r as { match_id: string }).match_id, resultToRow(r as never));
+    rows = [...porId.values()];
+  } catch (e) {
+    return new Response(JSON.stringify({ ok: false, erro: String(e) }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  const data = await resp.json();
-  const fixtures = Array.isArray(data?.response) ? data.response : [];
-  const rows: MatchRow[] = fixtures.map(toMatchRow);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  // Respeita correções manuais: não sobrescreve jogos com placar_manual = true.
   const { data: manuais } = await supabase
     .from("matches")
     .select("api_fixture_id")
@@ -374,57 +384,56 @@ Deno.serve(async (req) => {
 - [ ] **Step 3: Conferir os testes do módulo compartilhado**
 
 Run: `npm test -- fixtures`
-Expected: PASS (a função usa `toMatchRow`, já coberto; o handler em si é verificado na Task 4 contra o banco real).
+Expected: PASS (a função usa `fixtureToRow`/`resultToRow`, já cobertos; o handler é verificado na Task 4 contra a API e o banco reais).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add supabase/functions/sync-matches/
-git commit -m "feat: edge function sync-matches (API-Football -> matches)
+git commit -m "feat: edge function sync-matches (FlashScore -> matches)
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 4: Deploy da função + secrets + sync inicial (checkpoint de credenciais)
+### Task 4: Deploy da função + secrets + sync inicial (checkpoint)
 
 **Files:** nenhum arquivo de código (deploy + secrets via Supabase CLI/MCP, com o controlador).
 
 **Interfaces:**
-- Consumes: a função da Task 3; a tabela da Task 1.
-- Produces: função `sync-matches` publicada; secrets configurados; tabela `matches` populada com os jogos da Copa.
+- Consumes: função (Task 3) + tabela (Task 1). Chave RapidAPI já fornecida; identificadores do torneio já validados (a API retornou jogos reais de 2026).
+- Produces: função publicada, secrets configurados, `matches` populada.
 
-- [ ] **Step 1: Definir os secrets da função** (controlador, com a chave fornecida pelo usuário)
+- [ ] **Step 1: Definir secrets**
 
 ```bash
 supabase secrets set \
-  API_FOOTBALL_KEY=<chave-do-usuario> \
-  API_FOOTBALL_LEAGUE=1 \
-  API_FOOTBALL_SEASON=2026 \
+  RAPIDAPI_KEY=<chave-rapidapi> \
+  RAPIDAPI_HOST=flashscore4.p.rapidapi.com \
+  FS_TEMPLATE_ID=lvUBR5F8 \
+  FS_SEASON_ID=185 \
+  FS_STAGE_ID=SbLsX4y7 \
   CRON_SECRET=<segredo-gerado> \
   --project-ref xyfuxtlnjapsptqufgah
 ```
 
-- [ ] **Step 2: Confirmar league/season** (chamada única à API-Football para validar que `league=1&season=2026` retorna fixtures da Copa). Se vier vazio, ajustar `API_FOOTBALL_LEAGUE`/`SEASON` consultando `/leagues?search=World Cup`.
-
-- [ ] **Step 3: Deploy da função** (sem verificação de JWT — a autenticação é o `x-cron-secret`)
+- [ ] **Step 2: Deploy (sem verificação de JWT — a auth é o `x-cron-secret`)**
 
 ```bash
 supabase functions deploy sync-matches --no-verify-jwt --project-ref xyfuxtlnjapsptqufgah
 ```
 
-- [ ] **Step 4: Invocar manualmente e verificar**
+- [ ] **Step 3: Invocar e verificar**
 
 ```bash
 curl -s -X POST "https://xyfuxtlnjapsptqufgah.supabase.co/functions/v1/sync-matches" \
   -H "x-cron-secret: <segredo-gerado>"
 ```
-Expected: JSON `{ ok: true, total: N, upserted: N, pulados_manual: 0 }` com N > 0.
+Expected: `{ ok: true, total: N, upserted: N, pulados_manual: 0 }`, N > 0.
+No banco: `select count(*), min(inicio_em), max(inicio_em) from public.matches;` → contagem > 0, datas em 2026.
 
-Verificar no banco: `select count(*), min(inicio_em), max(inicio_em) from public.matches;` → contagem > 0.
-
-- [ ] **Step 5: Sem commit** (operação de infraestrutura). Registrar no ledger o segredo (apenas referência, não o valor) e que a função está publicada.
+- [ ] **Step 4: Sem commit** (infra). Registrar no ledger que a função está publicada (sem expor o segredo).
 
 ---
 
@@ -434,18 +443,17 @@ Verificar no banco: `select count(*), min(inicio_em), max(inicio_em) from public
 - Create: `supabase/migrations/0003_cron_sync_matches.sql`
 
 **Interfaces:**
-- Consumes: a função publicada (Task 4) e o `CRON_SECRET`.
+- Consumes: função publicada (Task 4) + `CRON_SECRET`.
 - Produces: job `pg_cron` que chama `sync-matches` a cada 15 minutos via `pg_net`.
 
-- [ ] **Step 1: Escrever a migração de cron**
+- [ ] **Step 1: Migração de cron** (substituir `<SEGREDO>` pelo `CRON_SECRET` ao aplicar)
 
-Create `supabase/migrations/0003_cron_sync_matches.sql`. Substitua `<SEGREDO>` pelo mesmo `CRON_SECRET` da Task 4 ao aplicar:
+Create `supabase/migrations/0003_cron_sync_matches.sql`:
 
 ```sql
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
--- Remove agendamento anterior, se existir (idempotente)
 select cron.unschedule('sync-matches')
   where exists (select 1 from cron.job where jobname = 'sync-matches');
 
@@ -464,18 +472,16 @@ select cron.schedule(
 );
 ```
 
-- [ ] **Step 2: Aplicar** (controlador, via API/MCP do Supabase) e verificar o job:
+- [ ] **Step 2: Aplicar** (controlador, via API/MCP) e verificar:
 
 ```sql
 select jobname, schedule, active from cron.job where jobname = 'sync-matches';
 ```
 Expected: 1 linha, `schedule='*/15 * * * *'`, `active=true`.
 
-- [ ] **Step 3: Confirmar execução** (após até 15 min, ou rodar a função manual da Task 4): conferir `select max(atualizado_em) from public.matches;` recente.
+- [ ] **Step 3: Confirmar execução** (após até 15 min, ou via invocação manual da Task 4): `select max(atualizado_em) from public.matches;` recente.
 
-- [ ] **Step 4: Commit** (o arquivo de migração, com `<SEGREDO>` substituído por um placeholder — NÃO commitar o segredo real):
-
-Antes de commitar, troque o valor real por `'<CRON_SECRET>'` no arquivo versionado (o valor real fica só no banco/secret).
+- [ ] **Step 4: Commit** (trocar o segredo real por `'<CRON_SECRET>'` no arquivo versionado — NÃO commitar o segredo real):
 
 ```bash
 git add supabase/migrations/0003_cron_sync_matches.sql
@@ -495,7 +501,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `src/app/jogos/page.tsx`
 
 **Interfaces:**
-- Consumes: `createClient` server; `getSessao` (Fase 1) para proteção; design system.
+- Consumes: `createClient` server; `getSessao` (Fase 1); design system.
 - Produces:
   - `type Match = { id: string; fase: string; rodada: string; time_casa: string; time_fora: string; bandeira_casa: string | null; bandeira_fora: string | null; inicio_em: string; status: "agendado"|"ao_vivo"|"finalizado"; placar_casa: number | null; placar_fora: number | null }`
   - `listarJogos(): Promise<Match[]>` (ordenado por `inicio_em`)
@@ -534,9 +540,7 @@ describe("MatchCard", () => {
 
   it("mostra o placar quando finalizado", () => {
     render(
-      <MatchCard
-        match={{ ...base, status: "finalizado", placar_casa: 2, placar_fora: 0 }}
-      />
+      <MatchCard match={{ ...base, status: "finalizado", placar_casa: 2, placar_fora: 0 }} />
     );
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("0")).toBeInTheDocument();
@@ -719,11 +723,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `src/lib/auth/__tests__/admin.test.ts`
 
 **Interfaces:**
-- Consumes: `getPerfil` (Fase 1); `listarJogos`/`Match` (Task 6); `createClient` server; `Button`; env server `SYNC_FUNCTION_URL`, `CRON_SECRET` (na Vercel, para o botão de sync).
+- Consumes: `getPerfil`/`Profile` (Fase 1); `listarJogos`/`Match` (Task 6); `createClient` server; `Button`; env server `SYNC_FUNCTION_URL`, `CRON_SECRET` (na Vercel).
 - Produces:
   - `requireAdmin(): Promise<Profile>` (redireciona se não-admin)
-  - server actions `salvarPlacar(_prev, formData): Promise<{ erro?: string; ok?: string }>` (update em `matches`, seta `placar_manual=true`) e `dispararSync(): Promise<{ erro?: string; ok?: string }>` (chama a Edge Function com o `x-cron-secret`)
-  - `<MatchAdminRow match={Match} />` (form de placar por jogo)
+  - server actions `salvarPlacar(_prev, formData): Promise<{ erro?: string; ok?: string }>` (update em `matches`, seta `placar_manual=true`) e `dispararSync(): Promise<{ erro?: string; ok?: string }>` (chama a Edge Function com `x-cron-secret`)
+  - `<MatchAdminRow match={Match} />`
 
 - [ ] **Step 1: Escrever o teste de `requireAdmin` (falhando)**
 
@@ -947,7 +951,7 @@ export default async function AdminPage() {
 - [ ] **Step 8: Rodar testes, lint e build**
 
 Run: `npm test && npm run lint && npm run build`
-Expected: todos os testes PASS; lint limpo; build compila com `/admin` e `/jogos`.
+Expected: testes PASS; lint limpo; build compila com `/admin` e `/jogos`.
 
 - [ ] **Step 9: Commit**
 
@@ -960,31 +964,32 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-## Configuração de ambiente (necessária para o admin disparar sync)
+## Configuração de ambiente (para o admin disparar sync)
 
-Na **Vercel** (Settings → Environment Variables), adicionar para Production/Preview/Development:
+Na **Vercel** (Settings → Environment Variables), Production/Preview/Development:
 - `SYNC_FUNCTION_URL` = `https://xyfuxtlnjapsptqufgah.supabase.co/functions/v1/sync-matches`
-- `CRON_SECRET` = (o mesmo segredo definido na Task 4)
+- `CRON_SECRET` = (o mesmo segredo da Task 4)
 
-Definir um **admin**: no SQL Editor/MCP, `update public.profiles set is_admin = true where id = '<uuid do usuário>';`
+Definir um **admin**: `update public.profiles set is_admin = true where id = '<uuid do usuário>';`
 
 ---
 
 ## Self-Review
 
 **Spec coverage (Fase 2):**
-- Tabela `matches` + RLS → Task 1.
-- Ingestão automática (API-Football → banco) → Tasks 2 (mapeamento), 3 (função), 4 (deploy), 5 (cron).
-- Respeitar correção manual (`placar_manual`) → Task 3 (sync pula manuais) + Task 7 (admin marca manual).
-- Jogos aparecem na UI → Task 6 (`/jogos`).
-- Fallback manual no admin → Task 7 (`/admin`, gating `is_admin`, editar placar, disparar sync).
+- `matches` + RLS → Task 1.
+- Ingestão automática (FlashScore → banco) → Tasks 2 (mapeamento), 3 (função: fixtures+results), 4 (deploy), 5 (cron).
+- Respeitar correção manual → Task 3 (pula `placar_manual`) + Task 7 (admin marca manual).
+- Jogos na UI → Task 6 (`/jogos`).
+- Fallback manual no admin → Task 7 (`/admin`).
 
-**Placeholder scan:** sem TBD/TODO; todo passo de código traz código completo. Os únicos valores deixados ao usuário são secrets (chave da API, `CRON_SECRET`) e a confirmação de `league/season` — explicitamente marcados como checkpoint na Task 4.
+**Placeholder scan:** sem TBD/TODO; código completo em cada passo. Valores deixados ao usuário: secrets (chave RapidAPI, `CRON_SECRET`) — marcados como checkpoint na Task 4. Identificadores do torneio já descobertos e fixados nas Global Constraints.
 
-**Type consistency:** `MatchRow` (mapeamento, snake_case = colunas) e `Match` (app) batem com as colunas de `matches`. `toMatchRow`/`mapStatus`/`mapRound` usados de forma consistente. Server actions seguem o formato `(_prev, formData) => Promise<{erro?,ok?}>` do `useActionState`, como na Fase 1. `requireAdmin(): Promise<Profile>` usa o `Profile` da Fase 1.
+**Type consistency:** `MatchRow` (mapeamento, sem fase/rodada — defaults do banco) e `Match` (app) batem com as colunas. `fixtureToRow`/`resultToRow`/`tsToIso` consistentes. `api_fixture_id` é `text` na tabela e `string` no mapeamento. Server actions no formato `(_prev, formData) => Promise<{erro?,ok?}>`. `requireAdmin(): Promise<Profile>`.
 
 **Notas de risco:**
-- A função é deployada com `--no-verify-jwt`; a segurança é o `x-cron-secret`. Mantê-lo secreto (Supabase secret + Vercel env). 
-- Pontuação dos palpites NÃO entra aqui (Fase 4); a sync só ingere jogos/placares.
-- `league=1&season=2026` deve ser confirmado contra a API-Football na Task 4 (free tier pode limitar temporadas/*fixtures*; ajustar secrets se necessário).
-- O módulo `_shared/fixtures.ts` é TS puro (sem imports de Deno) justamente para o Vitest conseguir testá-lo; a função Deno importa os mesmos símbolos via caminho relativo.
+- A API foi validada ao vivo (retornou jogos reais de 2026 — Brasil, Inglaterra, Canadá...). 
+- `tournament_stage_id=SbLsX4y7` ("Main") cobre o período atual; fases de mata-mata podem usar outro stage — se faltarem jogos depois, adicionar o(s) stage(s) extra(s) e iterar fixtures/results por stage.
+- `fase`/`rodada` não vêm da API → ficam no default; refino futuro (admin ou parsing) se necessário.
+- Função deployada com `--no-verify-jwt`; a segurança é o `x-cron-secret` (manter secreto).
+- Pontuação dos palpites é Fase 4.
