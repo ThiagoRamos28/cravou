@@ -1,4 +1,6 @@
 import type { Match } from "@/lib/matches";
+import type { Prediction } from "@/lib/predictions";
+import { PalpiteForm } from "@/components/jogos/palpite-form";
 
 function Time({ nome, bandeira }: { nome: string; bandeira: string | null }) {
   return (
@@ -20,7 +22,15 @@ const STATUS_LABEL: Record<Match["status"], string> = {
   finalizado: "Encerrado",
 };
 
-export function MatchCard({ match }: { match: Match }) {
+export function MatchCard({
+  match,
+  palpite,
+  minutosCorte = 10,
+}: {
+  match: Match;
+  palpite?: Prediction;
+  minutosCorte?: number;
+}) {
   const finalizado = match.status === "finalizado";
   const hora = new Date(match.inicio_em).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -52,6 +62,7 @@ export function MatchCard({ match }: { match: Match }) {
         </div>
         <Time nome={match.time_fora} bandeira={match.bandeira_fora} />
       </div>
+      <PalpiteForm match={match} palpite={palpite} minutosCorte={minutosCorte} />
     </article>
   );
 }

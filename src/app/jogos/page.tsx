@@ -4,12 +4,17 @@ import { SiteFooter } from "@/components/site-footer";
 import { MatchCard } from "@/components/jogos/match-card";
 import { getSessao } from "@/lib/auth/profile";
 import { listarJogos } from "@/lib/matches";
+import { listarMeusPalpites, getMinutosCorte } from "@/lib/predictions";
 
 export default async function JogosPage() {
   const sessao = await getSessao();
   if (!sessao) redirect("/entrar");
 
-  const jogos = await listarJogos();
+  const [jogos, palpites, minutosCorte] = await Promise.all([
+    listarJogos(),
+    listarMeusPalpites(),
+    getMinutosCorte(),
+  ]);
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
@@ -25,7 +30,12 @@ export default async function JogosPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {jogos.map((j) => (
-              <MatchCard key={j.id} match={j} />
+              <MatchCard
+                key={j.id}
+                match={j}
+                palpite={palpites[j.id]}
+                minutosCorte={minutosCorte}
+              />
             ))}
           </div>
         )}
