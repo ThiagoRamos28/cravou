@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import {
   credenciaisSchema,
@@ -57,10 +58,11 @@ export async function enviarMagicLink(
   const v = validar(magicLinkSchema, { email: formData.get("email") });
   if (!v.sucesso) return { erro: v.erro };
 
+  const origin = (await headers()).get("origin") ?? "";
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
     email: v.dados.email,
-    options: { emailRedirectTo: undefined },
+    options: { emailRedirectTo: `${origin}/auth/callback` },
   });
   if (error) return { erro: "Não foi possível enviar o link. Tente novamente." };
 
