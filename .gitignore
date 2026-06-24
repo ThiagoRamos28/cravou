@@ -49,3 +49,4 @@ __pycache__/
 
 .vercel
 .env*.local
+supabase/.temp/
