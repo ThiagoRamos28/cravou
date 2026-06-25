@@ -5,16 +5,14 @@ import { Resumo } from "@/components/historico/resumo";
 import { HistoricoItem } from "@/components/historico/historico-item";
 import { getSessao } from "@/lib/auth/profile";
 import { listarJogos } from "@/lib/matches";
-import { listarMeusPalpites } from "@/lib/predictions";
+import { listarMeusPalpites, getPtsPlacarExato } from "@/lib/predictions";
 import { resumoHistorico, type ItemHistorico } from "@/lib/historico";
-
-const PTS_MAXIMO = 10; // pts_placar_exato (default)
 
 export default async function HistoricoPage() {
   const sessao = await getSessao();
   if (!sessao) redirect("/entrar");
 
-  const [jogos, palpites] = await Promise.all([listarJogos(), listarMeusPalpites()]);
+  const [jogos, palpites, ptsMaximo] = await Promise.all([listarJogos(), listarMeusPalpites(), getPtsPlacarExato()]);
 
   const itens: ItemHistorico[] = jogos
     .filter((j) => j.status === "finalizado" && palpites[j.id])
@@ -29,7 +27,7 @@ export default async function HistoricoPage() {
     })
     .sort((a, b) => b.match.inicio_em.localeCompare(a.match.inicio_em));
 
-  const resumo = resumoHistorico(itens, PTS_MAXIMO);
+  const resumo = resumoHistorico(itens, ptsMaximo);
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
