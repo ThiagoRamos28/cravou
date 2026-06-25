@@ -21,7 +21,7 @@ export function Podium({ linhas }: { linhas: RankingRow[] }) {
         if (!l) return null;
         const pos = idx + 1;
         return (
-          <Reveal key={l.user_id} from="up" delay={delay} className={`${ordem} flex w-24 flex-col items-center sm:w-28`}>
+          <Reveal key={l.user_id} from="up" delay={delay} className={`${ordem} flex w-20 flex-col items-center sm:w-28`}>
             <div className="relative">
               {pos === 1 && (
                 <Crown
@@ -35,10 +35,10 @@ export function Podium({ linhas }: { linhas: RankingRow[] }) {
                 alt=""
                 width={56}
                 height={56}
-                className="h-14 w-14 rounded-full bg-muted object-cover ring-2 ring-border"
+                className="h-10 w-10 rounded-full bg-muted object-cover ring-2 ring-border sm:h-14 sm:w-14"
               />
             </div>
-            <span className="mt-2 max-w-full truncate text-center text-sm font-semibold">
+            <span className="mt-2 max-w-full truncate text-center text-xs font-semibold sm:text-sm">
               {l.apelido ?? "Sem apelido"}
             </span>
             <span className="font-display text-lg font-bold tabular-nums">

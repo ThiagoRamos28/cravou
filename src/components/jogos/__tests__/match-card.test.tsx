@@ -36,4 +36,19 @@ describe("MatchCard", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("0")).toBeInTheDocument();
   });
+
+  it("aplica truncate nos nomes dos times para evitar overflow", () => {
+    render(
+      <MatchCard
+        match={{ ...base, time_casa: "A".repeat(30), time_fora: "B".repeat(30) }}
+        minutosCorte={10}
+      />
+    );
+    // Os spans de nome dos times devem ter a classe truncate
+    const spans = screen
+      .getAllByText(/A{30}|B{30}/)
+      .filter((el) => el.tagName === "SPAN" && !el.className.includes("sr-only"));
+    expect(spans.length).toBeGreaterThan(0);
+    spans.forEach((el) => expect(el).toHaveClass("truncate"));
+  });
 });

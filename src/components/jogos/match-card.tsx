@@ -4,14 +4,20 @@ import { PalpiteForm } from "@/components/jogos/palpite-form";
 
 function Time({ nome, bandeira }: { nome: string; bandeira: string | null }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       {bandeira ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={bandeira} alt="" width={24} height={24} className="h-6 w-6 rounded-full bg-muted object-cover" />
+        <img
+          src={bandeira}
+          alt=""
+          width={24}
+          height={24}
+          className="h-6 w-6 shrink-0 rounded-full bg-muted object-cover"
+        />
       ) : (
-        <span className="h-6 w-6 rounded-full bg-muted" aria-hidden="true" />
+        <span className="h-6 w-6 shrink-0 rounded-full bg-muted" aria-hidden="true" />
       )}
-      <span className="font-medium">{nome}</span>
+      <span className="truncate font-medium">{nome}</span>
     </div>
   );
 }
@@ -47,9 +53,9 @@ export function MatchCard({
           {STATUS_LABEL[match.status]}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 overflow-hidden">
         <Time nome={match.time_casa} bandeira={match.bandeira_casa} />
-        <div className="font-display text-xl font-bold tabular-nums">
+        <div className="shrink-0 font-display text-xl font-bold tabular-nums">
           {finalizado ? (
             <span>
               <span>{match.placar_casa}</span>

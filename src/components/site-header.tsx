@@ -28,7 +28,7 @@ export async function SiteHeader() {
         <div className="flex items-center gap-4 sm:gap-6">
           <HeaderBrand />
           {perfil && (
-            <nav className="flex items-center gap-1">
+            <nav className="flex items-center gap-0.5 sm:gap-1">
               <Link
                 href="/jogos"
                 className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
