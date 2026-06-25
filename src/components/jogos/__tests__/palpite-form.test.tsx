@@ -46,4 +46,41 @@ describe("PalpiteForm", () => {
     expect((screen.getByLabelText(/palpite brasil/i) as HTMLInputElement).value).toBe("2");
     expect((screen.getByLabelText(/palpite argentina/i) as HTMLInputElement).value).toBe("1");
   });
+
+  it("mostra os pontos ganhos num jogo finalizado", () => {
+    const finalizado: Match = {
+      ...base,
+      status: "finalizado",
+      inicio_em: "2000-01-01T00:00:00.000Z",
+      placar_casa: 3,
+      placar_fora: 1,
+    };
+    render(
+      <PalpiteForm
+        match={finalizado}
+        minutosCorte={10}
+        palpite={{ id: "p1", match_id: "m1", palpite_casa: 2, palpite_fora: 0, pontos: 7 }}
+      />
+    );
+    expect(screen.getByText(/\+7 pts/i)).toBeInTheDocument();
+  });
+
+  it("destaca 'Cravou!' quando o palpite bateu o placar exato", () => {
+    const finalizado: Match = {
+      ...base,
+      status: "finalizado",
+      inicio_em: "2000-01-01T00:00:00.000Z",
+      placar_casa: 2,
+      placar_fora: 1,
+    };
+    render(
+      <PalpiteForm
+        match={finalizado}
+        minutosCorte={10}
+        palpite={{ id: "p1", match_id: "m1", palpite_casa: 2, palpite_fora: 1, pontos: 10 }}
+      />
+    );
+    expect(screen.getByText(/cravou/i)).toBeInTheDocument();
+    expect(screen.getByText(/\+10 pts/i)).toBeInTheDocument();
+  });
 });

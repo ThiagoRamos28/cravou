@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Lock } from "lucide-react";
+import { Lock, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { salvarPalpite, type EstadoPalpite } from "@/app/jogos/actions";
 import { palpiteAberto } from "@/lib/palpites/corte";
@@ -25,6 +25,13 @@ export function PalpiteForm({
   const aberto = match.status === "agendado" && palpiteAberto(match.inicio_em, minutosCorte);
 
   if (!aberto) {
+    const pontuado =
+      match.status === "finalizado" && palpite && palpite.pontos != null;
+    const cravou =
+      pontuado &&
+      palpite!.palpite_casa === match.placar_casa &&
+      palpite!.palpite_fora === match.placar_fora;
+
     return (
       <div className="mt-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -34,6 +41,24 @@ export function PalpiteForm({
             {palpite ? `: ${palpite.palpite_casa} × ${palpite.palpite_fora}` : ""}
           </span>
         </div>
+        {pontuado && (
+          <div className="mt-1.5">
+            {cravou ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent">
+                <Trophy className="h-3.5 w-3.5" aria-hidden="true" />
+                Cravou! +{palpite!.pontos} pts
+              </span>
+            ) : (
+              <span
+                className={`text-xs font-semibold ${
+                  palpite!.pontos! > 0 ? "text-primary" : "text-muted-foreground"
+                }`}
+              >
+                +{palpite!.pontos} pts
+              </span>
+            )}
+          </div>
+        )}
         {/* Hidden but accessible inputs so tests can query them as disabled */}
         <label className="sr-only" htmlFor={`casa-${match.id}`}>
           Palpite {match.time_casa}
