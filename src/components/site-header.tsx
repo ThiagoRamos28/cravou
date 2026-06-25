@@ -25,7 +25,25 @@ export async function SiteHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <HeaderBrand />
+        <div className="flex items-center gap-4 sm:gap-6">
+          <HeaderBrand />
+          {perfil && (
+            <nav className="flex items-center gap-1">
+              <Link
+                href="/jogos"
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                Jogos
+              </Link>
+              <Link
+                href="/ranking"
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                Ranking
+              </Link>
+            </nav>
+          )}
+        </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <ThemeToggle />
           {perfil ? (
