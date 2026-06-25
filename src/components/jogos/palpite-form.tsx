@@ -69,7 +69,7 @@ export function PalpiteForm({
             transition={{ duration: 0.3, delay: 0.1 }}
           >
             {cravou ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent">
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-foreground">
                 <Trophy className="h-3.5 w-3.5" aria-hidden="true" />
                 Cravou! +{palpite!.pontos} pts
               </span>

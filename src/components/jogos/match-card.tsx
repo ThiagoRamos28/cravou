@@ -4,7 +4,7 @@ import { PalpiteForm } from "@/components/jogos/palpite-form";
 
 function Time({ nome, bandeira }: { nome: string; bandeira: string | null }) {
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       {bandeira ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
