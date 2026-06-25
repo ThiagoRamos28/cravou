@@ -1,9 +1,24 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { PalpiteForm } from "@/components/jogos/palpite-form";
 import type { Match } from "@/lib/matches";
 
+// Mocks de módulo — DEVEM estar no nível do arquivo (Vitest os hoist).
+const mockToast = vi.fn();
+vi.mock("@/components/ui/toast", () => ({
+  useToast: () => ({ toast: mockToast }),
+}));
+
 vi.mock("@/app/jogos/actions", () => ({ salvarPalpite: vi.fn() }));
+
+// Controla o que useActionState retorna em cada teste.
+const mockUseActionState = vi.fn();
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return { ...actual, useActionState: mockUseActionState };
+});
+
+// Importar DEPOIS dos mocks (ordem importa com vi.mock hoisting).
+const { PalpiteForm } = await import("@/components/jogos/palpite-form");
 
 const base: Match = {
   id: "m1",
@@ -18,6 +33,12 @@ const base: Match = {
   placar_casa: null,
   placar_fora: null,
 };
+
+beforeEach(() => {
+  mockToast.mockClear();
+  // Estado padrão: sem ok/erro, form ativo.
+  mockUseActionState.mockReturnValue([{}, vi.fn(), false]);
+});
 
 describe("PalpiteForm", () => {
   it("mostra inputs habilitados quando o corte está aberto", () => {
@@ -82,5 +103,26 @@ describe("PalpiteForm", () => {
     );
     expect(screen.getByText(/cravou/i)).toBeInTheDocument();
     expect(screen.getByText(/\+10 pts/i)).toBeInTheDocument();
+  });
+
+  it("chama toast de sucesso quando estado.ok está presente", () => {
+    mockUseActionState.mockReturnValue([{ ok: "Palpite salvo!" }, vi.fn(), false]);
+    const futuro: Match = { ...base, inicio_em: "2999-01-01T00:00:00.000Z" };
+    render(<PalpiteForm match={futuro} minutosCorte={10} />);
+    expect(mockToast).toHaveBeenCalledWith({ message: "Palpite salvo!", variant: "success" });
+  });
+
+  it("chama toast de erro quando estado.erro está presente", () => {
+    mockUseActionState.mockReturnValue([
+      { erro: "Palpites encerrados para este jogo." },
+      vi.fn(),
+      false,
+    ]);
+    const futuro: Match = { ...base, inicio_em: "2999-01-01T00:00:00.000Z" };
+    render(<PalpiteForm match={futuro} minutosCorte={10} />);
+    expect(mockToast).toHaveBeenCalledWith({
+      message: "Palpites encerrados para este jogo.",
+      variant: "error",
+    });
   });
 });

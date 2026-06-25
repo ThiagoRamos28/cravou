@@ -1,7 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MatchCard } from "@/components/jogos/match-card";
 import type { Match } from "@/lib/matches";
+
+// PalpiteForm agora usa useToast — mockar para evitar erro de contexto.
+vi.mock("@/components/ui/toast", () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}));
 
 const base: Match = {
   id: "1",
