@@ -1,8 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { fixtureToRow, resultToRow, type MatchRow } from "../_shared/fixtures.ts";
 
-// A API não expõe rodada; derivamos a rodada da fase de grupos por blocos de
-// data (fim exclusivo). Calculado na própria sync para sobreviver a re-syncs.
 const BLOCOS_GRUPOS = [
   { rodada: "1", ate: "2026-06-18T00:00:00.000Z" },
   { rodada: "2", ate: "2026-06-24T00:00:00.000Z" },
@@ -17,6 +15,21 @@ function rodadaGrupos(tsSeconds: number): string {
   return "";
 }
 
+async function withRetry<T>(fn: () => Promise<T>, tentativas = 3): Promise<T> {
+  let ultimoErro: unknown;
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      ultimoErro = e;
+      if (i < tentativas - 1) {
+        await new Promise((r) => setTimeout(r, 100 * Math.pow(2, i)));
+      }
+    }
+  }
+  throw ultimoErro;
+}
+
 async function fsGet(path: string): Promise<unknown[]> {
   const host = Deno.env.get("RAPIDAPI_HOST") ?? "flashscore4.p.rapidapi.com";
   const template = Deno.env.get("FS_TEMPLATE_ID")!;
@@ -25,15 +38,25 @@ async function fsGet(path: string): Promise<unknown[]> {
   const url =
     `https://${host}/api/flashscore/v2/tournaments/${path}` +
     `?tournament_template_id=${template}&season_id=${season}&tournament_stage_id=${stage}`;
-  const resp = await fetch(url, {
-    headers: {
-      "x-rapidapi-host": host,
-      "x-rapidapi-key": Deno.env.get("RAPIDAPI_KEY")!,
-    },
+
+  return withRetry(async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          "x-rapidapi-host": host,
+          "x-rapidapi-key": Deno.env.get("RAPIDAPI_KEY")!,
+        },
+        signal: controller.signal,
+      });
+      if (!resp.ok) throw new Error(`FlashScore ${path} ${resp.status}`);
+      const data = await resp.json();
+      return Array.isArray(data) ? data : [];
+    } finally {
+      clearTimeout(timer);
+    }
   });
-  if (!resp.ok) throw new Error(`FlashScore ${path} ${resp.status}`);
-  const data = await resp.json();
-  return Array.isArray(data) ? data : [];
 }
 
 Deno.serve(async (req) => {
@@ -51,7 +74,6 @@ Deno.serve(async (req) => {
       fsGet("fixtures"),
       fsGet("results"),
     ]);
-    // results sobrescrevem fixtures para o mesmo match_id (têm placar final)
     const porId = new Map<string, MatchRow>();
     for (const f of fixtures) {
       const ff = f as { match_id: string; timestamp: number };
@@ -63,7 +85,12 @@ Deno.serve(async (req) => {
     }
     rows = [...porId.values()];
   } catch (e) {
-    return new Response(JSON.stringify({ ok: false, erro: String(e) }), {
+    const erro = {
+      mensagem: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+    };
+    console.error(JSON.stringify({ evento: "sync_erro", ...erro }));
+    return new Response(JSON.stringify({ ok: false, erro: erro.mensagem }), {
       status: 502,
       headers: { "Content-Type": "application/json" },
     });
@@ -89,6 +116,7 @@ Deno.serve(async (req) => {
       .from("matches")
       .upsert(paraUpsert, { onConflict: "api_fixture_id" });
     if (error) {
+      console.error(JSON.stringify({ evento: "sync_upsert_erro", mensagem: error.message }));
       return new Response(JSON.stringify({ ok: false, erro: error.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
