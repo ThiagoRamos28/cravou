@@ -1,6 +1,22 @@
 import { createClient } from "@supabase/supabase-js";
 import { fixtureToRow, resultToRow, type MatchRow } from "../_shared/fixtures.ts";
 
+// A API não expõe rodada; derivamos a rodada da fase de grupos por blocos de
+// data (fim exclusivo). Calculado na própria sync para sobreviver a re-syncs.
+const BLOCOS_GRUPOS = [
+  { rodada: "1", ate: "2026-06-18T00:00:00.000Z" },
+  { rodada: "2", ate: "2026-06-24T00:00:00.000Z" },
+  { rodada: "3", ate: "2026-07-01T00:00:00.000Z" },
+];
+
+function rodadaGrupos(tsSeconds: number): string {
+  const t = tsSeconds * 1000;
+  for (const b of BLOCOS_GRUPOS) {
+    if (t < new Date(b.ate).getTime()) return b.rodada;
+  }
+  return "";
+}
+
 async function fsGet(path: string): Promise<unknown[]> {
   const host = Deno.env.get("RAPIDAPI_HOST") ?? "flashscore4.p.rapidapi.com";
   const template = Deno.env.get("FS_TEMPLATE_ID")!;
@@ -37,8 +53,14 @@ Deno.serve(async (req) => {
     ]);
     // results sobrescrevem fixtures para o mesmo match_id (têm placar final)
     const porId = new Map<string, MatchRow>();
-    for (const f of fixtures) porId.set((f as { match_id: string }).match_id, fixtureToRow(f as never));
-    for (const r of results) porId.set((r as { match_id: string }).match_id, resultToRow(r as never));
+    for (const f of fixtures) {
+      const ff = f as { match_id: string; timestamp: number };
+      porId.set(ff.match_id, fixtureToRow(f as never, "grupos", rodadaGrupos(ff.timestamp)));
+    }
+    for (const r of results) {
+      const rr = r as { match_id: string; timestamp: number };
+      porId.set(rr.match_id, resultToRow(r as never, "grupos", rodadaGrupos(rr.timestamp)));
+    }
     rows = [...porId.values()];
   } catch (e) {
     return new Response(JSON.stringify({ ok: false, erro: String(e) }), {
