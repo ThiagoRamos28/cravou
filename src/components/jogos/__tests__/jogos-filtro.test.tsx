@@ -30,4 +30,22 @@ describe("JogosFiltro", () => {
     render(<JogosFiltro fases={fases} faseAtiva="grupos" rodadaAtiva="1" />);
     expect(screen.getByRole("button", { name: /grupos/i })).toHaveAttribute("aria-current", "true");
   });
+
+  it("esconde os chips de fase quando há apenas uma fase", () => {
+    render(
+      <JogosFiltro
+        fases={[{ fase: "grupos", rodadas: ["1", "2"] }]}
+        faseAtiva="grupos"
+        rodadaAtiva="1"
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /grupos/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2" })).toBeInTheDocument();
+  });
+
+  it("marca a rodada ativa com aria-current", () => {
+    render(<JogosFiltro fases={fases} faseAtiva="grupos" rodadaAtiva="2" />);
+    expect(screen.getByRole("button", { name: "2" })).toHaveAttribute("aria-current", "true");
+  });
 });
