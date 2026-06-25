@@ -41,6 +41,12 @@ export async function SiteHeader() {
               >
                 Ranking
               </Link>
+              <Link
+                href="/historico"
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                Histórico
+              </Link>
             </nav>
           )}
         </div>

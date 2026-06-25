@@ -25,6 +25,8 @@ export type MatchRow = {
   status: "agendado" | "finalizado";
   placar_casa: number | null;
   placar_fora: number | null;
+  fase: string;
+  rodada: string;
 };
 
 export function tsToIso(ts: number): string {
@@ -42,15 +44,24 @@ function base(f: FsFixture) {
   };
 }
 
-export function fixtureToRow(f: FsFixture): MatchRow {
-  return { ...base(f), status: "agendado", placar_casa: null, placar_fora: null };
+export function fixtureToRow(f: FsFixture, fase = "grupos", rodada = ""): MatchRow {
+  return {
+    ...base(f),
+    status: "agendado",
+    placar_casa: null,
+    placar_fora: null,
+    fase,
+    rodada,
+  };
 }
 
-export function resultToRow(r: FsResult): MatchRow {
+export function resultToRow(r: FsResult, fase = "grupos", rodada = ""): MatchRow {
   return {
     ...base(r),
     status: "finalizado",
     placar_casa: r.scores?.home ?? null,
     placar_fora: r.scores?.away ?? null,
+    fase,
+    rodada,
   };
 }

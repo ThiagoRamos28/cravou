@@ -44,3 +44,18 @@ export async function getMinutosCorte(): Promise<number> {
     return 10;
   }
 }
+
+// Lê pts_placar_exato da app_config; default 10 em qualquer falha.
+export async function getPtsPlacarExato(): Promise<number> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("app_config")
+      .select("valor")
+      .eq("chave", "pts_placar_exato")
+      .single();
+    return (data as { valor: number } | null)?.valor ?? 10;
+  } catch {
+    return 10;
+  }
+}
