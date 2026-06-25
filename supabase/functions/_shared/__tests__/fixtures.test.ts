@@ -11,8 +11,12 @@ describe("tsToIso", () => {
 });
 
 describe("fixtureToRow", () => {
-  it("mapeia um jogo futuro como agendado sem placar", () => {
-    const row = fixtureToRow({ match_id: "m1", timestamp: 1782327600, home_team: home, away_team: away });
+  it("mapeia um jogo futuro como agendado com fase/rodada", () => {
+    const row = fixtureToRow(
+      { match_id: "m1", timestamp: 1782327600, home_team: home, away_team: away },
+      "grupos",
+      "1"
+    );
     expect(row).toEqual({
       api_fixture_id: "m1",
       time_casa: "Brasil",
@@ -23,22 +27,28 @@ describe("fixtureToRow", () => {
       status: "agendado",
       placar_casa: null,
       placar_fora: null,
+      fase: "grupos",
+      rodada: "1",
     });
+  });
+
+  it("usa defaults quando fase/rodada não são passados", () => {
+    const row = fixtureToRow({ match_id: "m1", timestamp: 1, home_team: home, away_team: away });
+    expect(row.fase).toBe("grupos");
+    expect(row.rodada).toBe("");
   });
 });
 
 describe("resultToRow", () => {
-  it("mapeia um resultado como finalizado com placar", () => {
-    const row = resultToRow({
-      match_id: "m2",
-      timestamp: 1782266400,
-      home_team: home,
-      away_team: away,
-      scores: { home: 2, away: 0 },
-    });
+  it("mapeia um resultado como finalizado com placar e fase/rodada", () => {
+    const row = resultToRow(
+      { match_id: "m2", timestamp: 1782266400, home_team: home, away_team: away, scores: { home: 2, away: 0 } },
+      "oitavas",
+      ""
+    );
     expect(row.status).toBe("finalizado");
     expect(row.placar_casa).toBe(2);
     expect(row.placar_fora).toBe(0);
-    expect(row.api_fixture_id).toBe("m2");
+    expect(row.fase).toBe("oitavas");
   });
 });
