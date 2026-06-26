@@ -82,6 +82,14 @@ perfil · Fase 2 Ingestão de jogos (API-Football + cron) · Fase 3 Palpites · 
 ranking · Fase 5 Histórico & navegação · Fase 6 Polimento · Fase 7 Testes & robustez.
 Cada fase tem seu próprio plano em `docs/superpowers/plans/`.
 
+## Protocolo de encerramento de tarefas
+
+Ao finalizar uma branch/feature com `superpowers:finishing-a-development-branch`:
+
+1. Verificar que os testes passam (`npm test`).
+2. Push para `master` (Vercel faz deploy automático).
+3. **Registrar no Obsidian Vault** — documentar o que foi entregue (feature, decisões relevantes, variáveis de ambiente novas, etc.).
+
 ## Regras de negócio (resumo)
 
 - Pontuação: placar exato = 10 pts; só o resultado (V/E/D) = 5 pts; erro = 0 (configurável em `app_config`).
