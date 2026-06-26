@@ -3,6 +3,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { MatchCard } from "@/components/jogos/match-card";
 import { JogosFiltro } from "@/components/jogos/jogos-filtro";
+import { NovidadesModal } from "@/components/novidades-modal";
 import { getSessao } from "@/lib/auth/profile";
 import { listarJogos } from "@/lib/matches";
 import { listarMeusPalpites, getMinutosCorte } from "@/lib/predictions";
@@ -45,6 +46,7 @@ export default async function JogosPage({
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <SiteHeader />
+      <NovidadesModal />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
         <h1 className="mb-6 font-display text-3xl font-bold uppercase tracking-tight">
           Jogos da Copa
