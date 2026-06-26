@@ -68,7 +68,7 @@ export async function listarPalpitesJogo(
   try {
     const supabase = createAdminClient();
 
-    const { data: preds } = await supabase
+    const { data: preds, error } = await supabase
       .from("predictions")
       .select(
         "id, user_id, palpite_casa, palpite_fora, pontos, matches(placar_casa, placar_fora)"
@@ -76,14 +76,15 @@ export async function listarPalpitesJogo(
       .eq("match_id", matchId)
       .limit(200);
 
-    if (!preds || preds.length === 0) return [];
+    if (error || !preds || preds.length === 0) return [];
     const rows = preds as unknown as RawPredRow[];
 
     const userIds = [...new Set(rows.map((r) => r.user_id))];
-    const { data: profiles } = await supabase
+    const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
       .select("id, apelido")
       .in("id", userIds);
+    if (profilesError) return [];
 
     const apelidoMap = new Map<string, string>(
       (profiles ?? []).map((p: { id: string; apelido: string | null }) => [
