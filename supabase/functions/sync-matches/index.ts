@@ -112,15 +112,81 @@ Deno.serve(async (req) => {
     .map((r) => ({ ...r, atualizado_em: new Date().toISOString() }));
 
   if (paraUpsert.length > 0) {
+    // Busca placares atuais ANTES do upsert para detectar mudanças
+    const apiIds = paraUpsert.map((r) => r.api_fixture_id);
+    const { data: existentes } = await supabase
+      .from("matches")
+      .select("id, api_fixture_id, placar_casa, placar_fora, time_casa, time_fora")
+      .in("api_fixture_id", apiIds);
+
+    const mapaExistentes = new Map(
+      (existentes ?? []).map((m) => [
+        m.api_fixture_id as string,
+        {
+          id: m.id as string,
+          placar_casa: m.placar_casa as number | null,
+          placar_fora: m.placar_fora as number | null,
+          time_casa: m.time_casa as string,
+          time_fora: m.time_fora as string,
+        },
+      ])
+    );
+
     const { error } = await supabase
       .from("matches")
       .upsert(paraUpsert, { onConflict: "api_fixture_id" });
+
     if (error) {
       console.error(JSON.stringify({ evento: "sync_upsert_erro", mensagem: error.message }));
       return new Response(JSON.stringify({ ok: false, erro: error.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // Detecta e registra mudanças de placar no audit_log
+    const mudancas = paraUpsert
+      .filter((r) => {
+        const ex = mapaExistentes.get(r.api_fixture_id);
+        if (!ex) return false; // novo jogo — sem estado anterior
+        return (
+          r.placar_casa != null &&
+          r.placar_fora != null &&
+          (ex.placar_casa !== r.placar_casa || ex.placar_fora !== r.placar_fora)
+        );
+      })
+      .map((r) => {
+        const ex = mapaExistentes.get(r.api_fixture_id)!;
+        return {
+          match_id: ex.id,
+          time_casa: r.time_casa ?? ex.time_casa,
+          time_fora: r.time_fora ?? ex.time_fora,
+          anterior_casa: ex.placar_casa,
+          anterior_fora: ex.placar_fora,
+          novo_casa: r.placar_casa,
+          novo_fora: r.placar_fora,
+        };
+      });
+
+    if (mudancas.length > 0) {
+      await supabase.from("audit_log").insert(
+        mudancas.map((m) => ({
+          user_id: null,
+          acao: "sync_placar_auto",
+          tabela: "matches",
+          registro_id: m.match_id,
+          dados_anteriores: {
+            placar_casa: m.anterior_casa,
+            placar_fora: m.anterior_fora,
+          },
+          dados_novos: {
+            placar_casa: m.novo_casa,
+            placar_fora: m.novo_fora,
+            time_casa: m.time_casa,
+            time_fora: m.time_fora,
+          },
+        }))
+      );
     }
   }
 
