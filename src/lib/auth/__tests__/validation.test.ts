@@ -32,13 +32,19 @@ describe("validar()", () => {
 
   it("perfilSchema exige apelido entre 2 e 20 e avatar não vazio", () => {
     expect(
-      validar(perfilSchema, { apelido: "Zé", avatar_url: "u" }).sucesso
+      validar(perfilSchema, {
+        apelido: "Zé",
+        avatar_url: "https://api.dicebear.com/9.x/avataaars/avatar.svg",
+      }).sucesso
     ).toBe(true);
     expect(
-      validar(perfilSchema, { apelido: "Z", avatar_url: "u" }).sucesso
+      validar(perfilSchema, { apelido: "Z", avatar_url: "https://api.dicebear.com/9.x/avataaars/avatar.svg" }).sucesso
     ).toBe(false);
     expect(
       validar(perfilSchema, { apelido: "Zé", avatar_url: "" }).sucesso
+    ).toBe(false);
+    expect(
+      validar(perfilSchema, { apelido: "Zé", avatar_url: "https://malicious.com/avatar.jpg" }).sucesso
     ).toBe(false);
   });
 });

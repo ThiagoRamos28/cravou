@@ -15,7 +15,14 @@ export const perfilSchema = z.object({
     .trim()
     .min(2, "O apelido deve ter ao menos 2 caracteres.")
     .max(20, "O apelido deve ter no máximo 20 caracteres."),
-  avatar_url: z.string().min(1, "Escolha um avatar."),
+  avatar_url: z
+    .string()
+    .min(1, "Escolha um avatar.")
+    .url("Avatar inválido.")
+    .refine(
+      (u) => u.startsWith("https://api.dicebear.com/9.x/"),
+      "Avatar inválido."
+    ),
 });
 
 export const atualizarSenhaSchema = z
