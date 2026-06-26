@@ -24,7 +24,7 @@ export async function salvarPlacar(
   // Valida que o jogo existe e captura estado anterior para audit
   const { data: jogoAtual, error: erroConsulta } = await supabase
     .from("matches")
-    .select("id, placar_casa, placar_fora, status")
+    .select("id, placar_casa, placar_fora, status, time_casa, time_fora")
     .eq("id", id)
     .single();
 
@@ -53,7 +53,13 @@ export async function salvarPlacar(
       placar_fora: jogoAtual.placar_fora,
       status: jogoAtual.status,
     },
-    p_dados_novos: { placar_casa: casa, placar_fora: fora, status: "finalizado" },
+    p_dados_novos: {
+      placar_casa: casa,
+      placar_fora: fora,
+      status: "finalizado",
+      time_casa: jogoAtual.time_casa,
+      time_fora: jogoAtual.time_fora,
+    },
   });
 
   revalidatePath("/admin");

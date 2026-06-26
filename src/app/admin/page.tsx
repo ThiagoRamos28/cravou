@@ -21,6 +21,9 @@ export default async function AdminPage() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
           <h1 className="font-display text-3xl font-bold uppercase tracking-tight">Admin</h1>
           <div className="flex items-center gap-2">
+            <a href="/admin/auditoria" className={buttonVariants("ghost", "sm")}>
+              Auditoria
+            </a>
             <a href="/admin/config" className={buttonVariants("ghost", "sm")}>
               Configurações
             </a>
