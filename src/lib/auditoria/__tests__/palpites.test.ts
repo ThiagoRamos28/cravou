@@ -25,7 +25,7 @@ describe("motivoPalpite", () => {
   });
 
   it("errou resultado, acertou gols da casa → gols (detalhe menciona casa)", () => {
-    // Palpite: fora vence 4×3. Resultado: casa vence 2×3. Errou quem venceu, mas acertou gols da casa (3).
+    // Palpite: fora vence 4×3. Resultado: casa vence 3×2. Errou quem venceu, mas acertou gols da casa (3).
     const r = motivoPalpite(3, 4, 3, 2);
     expect(r.motivo).toBe("gols");
     expect(r.detalhe).toMatch(/casa/i);

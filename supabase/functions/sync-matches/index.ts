@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
       });
 
     if (mudancas.length > 0) {
-      await supabase.from("audit_log").insert(
+      const { error: auditError } = await supabase.from("audit_log").insert(
         mudancas.map((m) => ({
           user_id: null,
           acao: "sync_placar_auto",
@@ -187,6 +187,9 @@ Deno.serve(async (req) => {
           },
         }))
       );
+      if (auditError) {
+        console.error(JSON.stringify({ evento: "audit_log_erro", mensagem: auditError.message }));
+      }
     }
   }
 
