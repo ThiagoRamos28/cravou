@@ -54,7 +54,7 @@ export function PalpiteForm({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <div className={`flex items-center gap-2 text-xs ${palpite ? "text-foreground" : "text-muted-foreground"}`}>
+        <div className={`flex items-center justify-center gap-2 text-xs ${palpite ? "text-foreground" : "text-muted-foreground"}`}>
           <Lock className="h-3.5 w-3.5" aria-hidden="true" />
           <span>
             Palpites encerrados
@@ -124,7 +124,7 @@ export function PalpiteForm({
       exit={{ opacity: reduce ? 1 : 0 }}
       transition={{ duration: reduce ? 0 : 0.2 }}
     >
-      <form action={formAction} className="flex flex-wrap items-center gap-2">
+      <form action={formAction} className="flex flex-wrap items-center justify-center gap-2">
         <input type="hidden" name="match_id" value={match.id} />
         <input type="hidden" name="inicio_em" value={match.inicio_em} />
         <span className="text-xs text-muted-foreground">Seu palpite:</span>

@@ -17,27 +17,27 @@ function Time({
     <img
       src={bandeira}
       alt=""
-      width={24}
-      height={24}
-      className="h-6 w-6 shrink-0 rounded-full bg-muted object-cover"
+      width={20}
+      height={20}
+      className="h-5 w-5 shrink-0 rounded-full bg-muted object-cover"
     />
   ) : (
-    <span className="h-6 w-6 shrink-0 rounded-full bg-muted" aria-hidden="true" />
+    <span className="h-5 w-5 shrink-0 rounded-full bg-muted" aria-hidden="true" />
   );
 
   if (lado === "casa") {
     return (
-      <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-        <span className="truncate text-right font-medium">{nome}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="truncate text-sm font-medium">{nome}</span>
         {flag}
       </div>
     );
   }
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
+    <div className="flex items-center gap-1.5">
       {flag}
-      <span className="truncate font-medium">{nome}</span>
+      <span className="truncate text-sm font-medium">{nome}</span>
     </div>
   );
 }
@@ -68,23 +68,24 @@ export function MatchCard({
 
   return (
     <article
-      className={`rounded-2xl border bg-card p-4 ${
+      className={`rounded-2xl border bg-card p-3 ${
         palpite ? "border-primary/40" : "border-border"
       }`}
     >
-      <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+      <div className="mb-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
         <span>{hora}</span>
+        <span aria-hidden="true">·</span>
         <span className={match.status === "ao_vivo" ? "font-semibold text-accent" : ""}>
           {STATUS_LABEL[match.status]}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-3 overflow-hidden">
+      <div className="flex items-center justify-center gap-2 overflow-hidden">
         <Time
           nome={traduzirPais(match.time_casa)}
           bandeira={match.bandeira_casa}
           lado="casa"
         />
-        <div className="shrink-0 font-display text-xl font-bold tabular-nums">
+        <div className="shrink-0 font-display text-lg font-bold tabular-nums">
           {finalizado ? (
             <span>
               <span>{match.placar_casa}</span>

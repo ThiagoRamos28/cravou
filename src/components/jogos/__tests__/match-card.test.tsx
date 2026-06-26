@@ -53,16 +53,18 @@ describe("MatchCard", () => {
     spans.forEach((el) => expect(el).toHaveClass("truncate"));
   });
 
-  it("time da casa tem container com justify-end (flag à direita)", () => {
+  it("time da casa: nome vem antes da flag no DOM (simétrico)", () => {
     render(<MatchCard match={base} minutosCorte={999} />);
     const nomeCasa = screen.getByText("Brasil");
-    expect(nomeCasa.parentElement).toHaveClass("justify-end");
+    const casaChildren = Array.from(nomeCasa.parentElement!.children);
+    expect(casaChildren.indexOf(nomeCasa)).toBe(0);
   });
 
-  it("time visitante NÃO tem justify-end (flag à esquerda)", () => {
+  it("time visitante: flag vem antes do nome no DOM (simétrico)", () => {
     render(<MatchCard match={base} minutosCorte={999} />);
     const nomeFora = screen.getByText("Sérvia");
-    expect(nomeFora.parentElement).not.toHaveClass("justify-end");
+    const foraChildren = Array.from(nomeFora.parentElement!.children);
+    expect(foraChildren.indexOf(nomeFora)).toBe(1);
   });
 
   it("traduz nomes em inglês para português", () => {

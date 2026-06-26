@@ -22,6 +22,7 @@ export async function listarJogos(filtro?: {
   fase?: string;
   rodada?: string;
   soAbertos?: boolean;
+  soEncerrados?: boolean;
   minutosCorte?: number;
   limite?: number;
 }): Promise<Match[]> {
@@ -30,6 +31,7 @@ export async function listarJogos(filtro?: {
     let q = supabase.from("matches").select(COLS).order("inicio_em", { ascending: true });
     if (filtro?.fase) q = q.eq("fase", filtro.fase);
     if (filtro?.rodada) q = q.eq("rodada", filtro.rodada);
+    if (filtro?.soEncerrados) q = q.eq("status", "finalizado");
     const { data } = await q;
     let resultado = (data as Match[]) ?? [];
     if (filtro?.soAbertos) {
