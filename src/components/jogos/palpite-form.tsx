@@ -54,7 +54,7 @@ export function PalpiteForm({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className={`flex items-center gap-2 text-xs ${palpite ? "text-foreground" : "text-muted-foreground"}`}>
           <Lock className="h-3.5 w-3.5" aria-hidden="true" />
           <span>
             Palpites encerrados

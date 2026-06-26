@@ -22,10 +22,12 @@ export function JogosFiltro({
   fases,
   faseAtiva,
   rodadaAtiva,
+  soAbertos,
 }: {
   fases: { fase: string; rodadas: string[] }[];
   faseAtiva: string;
   rodadaAtiva: string;
+  soAbertos: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -34,6 +36,16 @@ export function JogosFiltro({
     const params = new URLSearchParams();
     if (fase) params.set("fase", fase);
     if (rodada) params.set("rodada", rodada);
+    if (soAbertos) params.set("soAbertos", "1");
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  function toggleAbertos() {
+    const params = new URLSearchParams();
+    if (faseAtiva) params.set("fase", faseAtiva);
+    if (rodadaAtiva) params.set("rodada", rodadaAtiva);
+    if (!soAbertos) params.set("soAbertos", "1");
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
@@ -42,6 +54,16 @@ export function JogosFiltro({
 
   return (
     <div className="mb-6 flex flex-col gap-3">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtro rápido">
+        <button
+          type="button"
+          onClick={toggleAbertos}
+          aria-current={soAbertos ? "true" : undefined}
+          className={chip(soAbertos)}
+        >
+          Palpitar agora
+        </button>
+      </div>
       {fases.length > 1 && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por fase">
           {fases.map((f) => (

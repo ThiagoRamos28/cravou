@@ -70,3 +70,20 @@ export async function enviarMagicLink(
 
   return { ok: "Enviamos um link de acesso para o seu e-mail." };
 }
+
+export async function solicitarRedefinicaoSenha(
+  _prev: EstadoAuth,
+  formData: FormData
+): Promise<EstadoAuth> {
+  const v = validar(magicLinkSchema, { email: formData.get("email") });
+  if (!v.sucesso) return { erro: v.erro };
+
+  const origin = (await headers()).get("origin") ?? "";
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(v.dados.email, {
+    redirectTo: `${origin}/auth/callback?next=/redefinir-senha`,
+  });
+  if (error) return { erro: "Não foi possível enviar o link. Tente novamente." };
+
+  return { ok: "Enviamos um link de redefinição para o seu e-mail." };
+}

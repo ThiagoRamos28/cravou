@@ -21,7 +21,7 @@ const item = {
   },
 };
 
-export function Hero() {
+export function Hero({ logado = false }: { logado?: boolean }) {
   const reduce = useReducedMotion();
   const variants = reduce
     ? { hidden: { opacity: 0 }, show: { opacity: 1 } }
@@ -71,8 +71,8 @@ export function Hero() {
           variants={variants}
           className="mt-2 flex flex-col items-center gap-3 sm:flex-row"
         >
-          <Link href="/entrar" className={buttonVariants("cta", "lg")}>
-            Começar a palpitar
+          <Link href={logado ? "/jogos" : "/entrar"} className={buttonVariants("cta", "lg")}>
+            {logado ? "Ver os jogos" : "Começar a palpitar"}
             <ArrowRight className="h-5 w-5" aria-hidden="true" />
           </Link>
           <Link href="/ranking" className={buttonVariants("outline", "lg")}>

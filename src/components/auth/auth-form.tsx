@@ -8,9 +8,11 @@ import {
   entrarComSenha,
   cadastrar,
   enviarMagicLink,
+  solicitarRedefinicaoSenha,
 } from "@/app/entrar/actions";
 
 type Aba = "entrar" | "criar" | "magico";
+type Modo = "form" | "recuperar";
 
 const abas: { id: Aba; label: string }[] = [
   { id: "entrar", label: "Entrar" },
@@ -29,9 +31,58 @@ function Submit({ children }: { children: string }) {
 
 export function AuthForm() {
   const [aba, setAba] = useState<Aba>("entrar");
+  const [modo, setModo] = useState<Modo>("form");
+
   const acao =
     aba === "entrar" ? entrarComSenha : aba === "criar" ? cadastrar : enviarMagicLink;
   const [estado, formAction] = useActionState(acao, {} as { erro?: string; ok?: string });
+  const [estadoRecup, formActionRecup] = useActionState(
+    solicitarRedefinicaoSenha,
+    {} as { erro?: string; ok?: string }
+  );
+
+  if (modo === "recuperar") {
+    return (
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6">
+        <h2 className="mb-4 font-display text-lg font-bold uppercase tracking-tight">
+          Recuperar senha
+        </h2>
+        <form action={formActionRecup} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="email-recup" className="text-sm font-medium">
+              E-mail
+            </label>
+            <input
+              id="email-recup"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              className="h-11 rounded-lg border border-border bg-background px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          {estadoRecup?.erro && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {estadoRecup.erro}
+            </p>
+          )}
+          {estadoRecup?.ok && (
+            <p role="status" className="text-sm text-primary">
+              {estadoRecup.ok}
+            </p>
+          )}
+          <Submit>Enviar link de redefinição</Submit>
+        </form>
+        <button
+          type="button"
+          onClick={() => setModo("form")}
+          className="mt-4 w-full cursor-pointer text-sm text-muted-foreground hover:text-foreground"
+        >
+          ← Voltar ao login
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6">
@@ -83,6 +134,15 @@ export function AuthForm() {
               autoComplete={aba === "criar" ? "new-password" : "current-password"}
               className="h-11 rounded-lg border border-border bg-background px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
+            {aba === "entrar" && (
+              <button
+                type="button"
+                onClick={() => setModo("recuperar")}
+                className="self-end cursor-pointer text-xs text-muted-foreground hover:text-foreground"
+              >
+                Esqueci a senha
+              </button>
+            )}
           </div>
         )}
 

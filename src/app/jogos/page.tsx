@@ -10,22 +10,27 @@ import { listarMeusPalpites, getMinutosCorte } from "@/lib/predictions";
 export default async function JogosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ fase?: string; rodada?: string }>;
+  searchParams: Promise<{ fase?: string; rodada?: string; soAbertos?: string }>;
 }) {
   const sessao = await getSessao();
   if (!sessao) redirect("/entrar");
 
-  const { fase, rodada } = await searchParams;
+  const { fase, rodada, soAbertos } = await searchParams;
+  const soAbertosAtivo = soAbertos === "1";
   const fases = await listarFasesERodadas();
 
-  // Default: primeira fase existente quando nenhuma foi escolhida.
   const faseAtiva = fase ?? fases[0]?.fase ?? "";
   const rodadaAtiva = rodada ?? "";
 
-  const [jogos, palpites, minutosCorte] = await Promise.all([
-    listarJogos({ fase: faseAtiva || undefined, rodada: rodadaAtiva || undefined }),
+  const minutosCorte = await getMinutosCorte();
+  const [jogos, palpites] = await Promise.all([
+    listarJogos({
+      fase: faseAtiva || undefined,
+      rodada: rodadaAtiva || undefined,
+      soAbertos: soAbertosAtivo,
+      minutosCorte,
+    }),
     listarMeusPalpites(),
-    getMinutosCorte(),
   ]);
 
   return (
@@ -36,11 +41,18 @@ export default async function JogosPage({
           Jogos da Copa
         </h1>
         {fases.length > 0 && (
-          <JogosFiltro fases={fases} faseAtiva={faseAtiva} rodadaAtiva={rodadaAtiva} />
+          <JogosFiltro
+            fases={fases}
+            faseAtiva={faseAtiva}
+            rodadaAtiva={rodadaAtiva}
+            soAbertos={soAbertosAtivo}
+          />
         )}
         {jogos.length === 0 ? (
           <p className="text-muted-foreground">
-            Nenhum jogo neste recorte. Ajuste o filtro acima.
+            {soAbertosAtivo
+              ? "Nenhum jogo aberto para palpite no momento."
+              : "Nenhum jogo neste recorte. Ajuste o filtro acima."}
           </p>
         ) : (
           <div className="flex flex-col gap-3">

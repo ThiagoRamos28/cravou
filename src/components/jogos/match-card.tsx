@@ -1,22 +1,42 @@
+import { traduzirPais } from "@/lib/i18n/paises";
 import type { Match } from "@/lib/matches";
 import type { Prediction } from "@/lib/predictions";
 import { PalpiteForm } from "@/components/jogos/palpite-form";
 
-function Time({ nome, bandeira }: { nome: string; bandeira: string | null }) {
+function Time({
+  nome,
+  bandeira,
+  lado,
+}: {
+  nome: string;
+  bandeira: string | null;
+  lado: "casa" | "fora";
+}) {
+  const flag = bandeira ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={bandeira}
+      alt=""
+      width={24}
+      height={24}
+      className="h-6 w-6 shrink-0 rounded-full bg-muted object-cover"
+    />
+  ) : (
+    <span className="h-6 w-6 shrink-0 rounded-full bg-muted" aria-hidden="true" />
+  );
+
+  if (lado === "casa") {
+    return (
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+        <span className="truncate text-right font-medium">{nome}</span>
+        {flag}
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      {bandeira ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={bandeira}
-          alt=""
-          width={24}
-          height={24}
-          className="h-6 w-6 shrink-0 rounded-full bg-muted object-cover"
-        />
-      ) : (
-        <span className="h-6 w-6 shrink-0 rounded-full bg-muted" aria-hidden="true" />
-      )}
+      {flag}
       <span className="truncate font-medium">{nome}</span>
     </div>
   );
@@ -43,10 +63,15 @@ export function MatchCard({
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
   });
 
   return (
-    <article className="rounded-2xl border border-border bg-card p-4">
+    <article
+      className={`rounded-2xl border bg-card p-4 ${
+        palpite ? "border-primary/40" : "border-border"
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
         <span>{hora}</span>
         <span className={match.status === "ao_vivo" ? "font-semibold text-accent" : ""}>
@@ -54,7 +79,11 @@ export function MatchCard({
         </span>
       </div>
       <div className="flex items-center justify-between gap-3 overflow-hidden">
-        <Time nome={match.time_casa} bandeira={match.bandeira_casa} />
+        <Time
+          nome={traduzirPais(match.time_casa)}
+          bandeira={match.bandeira_casa}
+          lado="casa"
+        />
         <div className="shrink-0 font-display text-xl font-bold tabular-nums">
           {finalizado ? (
             <span>
@@ -66,7 +95,11 @@ export function MatchCard({
             <span className="text-muted-foreground">×</span>
           )}
         </div>
-        <Time nome={match.time_fora} bandeira={match.bandeira_fora} />
+        <Time
+          nome={traduzirPais(match.time_fora)}
+          bandeira={match.bandeira_fora}
+          lado="fora"
+        />
       </div>
       <PalpiteForm match={match} palpite={palpite} minutosCorte={minutosCorte} />
     </article>
