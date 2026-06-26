@@ -42,15 +42,15 @@ describe("JogosFiltro", () => {
     expect(screen.queryByText("3")).not.toBeInTheDocument();
   });
 
-  it("navega com soAbertos=1 ao clicar em 'Palpitar agora' (inativo)", async () => {
+  it("volta ao default (abertos) ao clicar em 'Abertos' quando inativo", async () => {
     render(<JogosFiltro />);
     await userEvent.click(screen.getByRole("button", { name: /abertos/i }));
-    expect(push).toHaveBeenCalledWith("/jogos?soAbertos=1");
+    expect(push).toHaveBeenCalledWith("/jogos");
   });
 
-  it("limpa o filtro ao clicar em 'Palpitar agora' quando já está ativo", async () => {
+  it("navega com soAbertos=0 ao clicar em 'Abertos' quando já está ativo", async () => {
     render(<JogosFiltro soAbertos />);
     await userEvent.click(screen.getByRole("button", { name: /abertos/i }));
-    expect(push).toHaveBeenCalledWith("/jogos");
+    expect(push).toHaveBeenCalledWith("/jogos?soAbertos=0");
   });
 });

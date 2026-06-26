@@ -24,7 +24,9 @@ export function JogosFiltro({
 
   function toggleAbertos() {
     const params = new URLSearchParams();
-    if (!soAbertos) params.set("soAbertos", "1");
+    if (soAbertos) {
+      params.set("soAbertos", "0"); // opt-out do padrão — mostra todos
+    }
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }

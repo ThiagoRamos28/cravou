@@ -17,8 +17,9 @@ export default async function JogosPage({
   if (!sessao) redirect("/entrar");
 
   const { soAbertos, encerrados } = await searchParams;
-  const soAbertosAtivo = soAbertos === "1";
   const soEncerradosAtivo = encerrados === "1";
+  // Padrão: mostrar jogos abertos/ao vivo, a menos que o usuário opte por ver todos (?soAbertos=0)
+  const soAbertosAtivo = !soEncerradosAtivo && soAbertos !== "0";
 
   const minutosCorte = await getMinutosCorte();
   const [jogos, palpites] = await Promise.all([
