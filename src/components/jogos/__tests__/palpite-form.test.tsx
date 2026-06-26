@@ -105,6 +105,24 @@ describe("PalpiteForm", () => {
     expect(screen.getByText(/\+10 pts/i)).toBeInTheDocument();
   });
 
+  it("mostra palpite bloqueado em jogo ao vivo", () => {
+    const aoVivo: Match = {
+      ...base,
+      status: "ao_vivo",
+      inicio_em: "2000-01-01T00:00:00.000Z",
+    };
+    render(
+      <PalpiteForm
+        match={aoVivo}
+        minutosCorte={10}
+        palpite={{ id: "p1", match_id: "m1", palpite_casa: 1, palpite_fora: 2, pontos: null }}
+      />
+    );
+    expect(screen.getByText(/encerrad/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 × 2/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/palpite brasil/i)).toBeDisabled();
+  });
+
   it("chama toast de sucesso quando estado.ok está presente", () => {
     mockUseActionState.mockReturnValue([{ ok: "Palpite salvo!" }, vi.fn(), false]);
     const futuro: Match = { ...base, inicio_em: "2999-01-01T00:00:00.000Z" };

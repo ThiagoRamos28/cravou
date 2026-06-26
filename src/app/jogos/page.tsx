@@ -33,7 +33,7 @@ export default async function JogosPage({
   const jogosAbertosCount = soAbertosAtivo
     ? jogos.length
     : jogos.filter(
-        (j) => j.status === "agendado" && palpiteAberto(j.inicio_em, minutosCorte)
+        (j) => j.status === "ao_vivo" || (j.status === "agendado" && palpiteAberto(j.inicio_em, minutosCorte))
       ).length;
 
   return (
