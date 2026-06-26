@@ -48,11 +48,23 @@ export async function salvarConfiguracoes(
     return { erro: "Não foi possível salvar as configurações." };
   }
 
-  // 5. Recalcular se algum pts_* mudou
+  const supabase = await createClient();
+
+  // 5. Registrar audit log com os valores que mudaram
+  const mudancas = TODAS_CHAVES.filter((k) => mapaAtual[k] !== valores[k]);
+  if (mudancas.length > 0) {
+    await supabase.rpc("registrar_acao_admin", {
+      p_acao: "salvar_configuracoes",
+      p_tabela: "app_config",
+      p_dados_anteriores: Object.fromEntries(mudancas.map((k) => [k, mapaAtual[k]])),
+      p_dados_novos: Object.fromEntries(mudancas.map((k) => [k, valores[k]])),
+    });
+  }
+
+  // 6. Recalcular se algum pts_* mudou
   const ptsMudou = CHAVES_PTS.some((k) => mapaAtual[k] !== valores[k]);
   if (ptsMudou) {
     try {
-      const supabase = await createClient();
       await supabase.rpc("recalcular_todos");
     } catch {
       revalidatePath("/admin/config");
