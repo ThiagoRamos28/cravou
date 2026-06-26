@@ -25,10 +25,17 @@ describe("motivoPalpite", () => {
   });
 
   it("errou resultado, acertou gols da casa → gols (detalhe menciona casa)", () => {
-    const r = motivoPalpite(3, 1, 3, 2); // casa acertou (3), fora errou
+    // Palpite: fora vence 4×3. Resultado: casa vence 2×3. Errou quem venceu, mas acertou gols da casa (3).
+    const r = motivoPalpite(3, 4, 3, 2);
     expect(r.motivo).toBe("gols");
     expect(r.detalhe).toMatch(/casa/i);
     expect(r.detalhe).toContain("3");
+  });
+
+  it("acertou resultado (casa vence) E gols da casa mas não o placar exato → resultado, não gols", () => {
+    // mesmoResultado=true tem prioridade sobre acertar os gols de um time
+    const r = motivoPalpite(3, 1, 3, 2);
+    expect(r.motivo).toBe("resultado");
   });
 
   it("errou resultado, acertou gols do fora → gols (detalhe menciona fora)", () => {

@@ -34,6 +34,9 @@ export function motivoPalpite(
   )
     return { motivo: "saldo", detalhe: "Vencedor certo e diferença de gols exata" };
 
+  if (mesmoResultado)
+    return { motivo: "resultado", detalhe: "Resultado (V/E/D) correto" };
+
   if (palpiteCasa === placarCasa)
     return {
       motivo: "gols",
@@ -45,9 +48,6 @@ export function motivoPalpite(
       motivo: "gols",
       detalhe: `Acertou os gols do time de fora (${placarFora})`,
     };
-
-  if (mesmoResultado)
-    return { motivo: "resultado", detalhe: "Resultado (V/E/D) correto" };
 
   return { motivo: "erro", detalhe: "Errou resultado e placares" };
 }
