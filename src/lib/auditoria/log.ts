@@ -79,11 +79,10 @@ export async function listarLog(): Promise<EntradaLog[]> {
 
     const apelidoMap = new Map<string, string>();
     if (userIds.length > 0) {
-      const { data: profiles, error: profilesError } = await supabase
+      const { data: profiles } = await supabase
         .from("profiles")
         .select("id, apelido")
         .in("id", userIds);
-      if (profilesError) return [];
       for (const p of profiles ?? []) {
         apelidoMap.set(
           (p as { id: string; apelido: string | null }).id,
