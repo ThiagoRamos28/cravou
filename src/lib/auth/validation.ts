@@ -18,9 +18,21 @@ export const perfilSchema = z.object({
   avatar_url: z.string().min(1, "Escolha um avatar."),
 });
 
+export const atualizarSenhaSchema = z
+  .object({
+    senha_atual: z.string().min(1, "Informe a senha atual."),
+    senha_nova: z.string().min(6, "A nova senha deve ter ao menos 6 caracteres."),
+    confirmar: z.string().min(1, "Confirme a nova senha."),
+  })
+  .refine((d) => d.senha_nova === d.confirmar, {
+    message: "As senhas não coincidem.",
+    path: ["confirmar"],
+  });
+
 export type Credenciais = z.infer<typeof credenciaisSchema>;
 export type MagicLink = z.infer<typeof magicLinkSchema>;
 export type Perfil = z.infer<typeof perfilSchema>;
+export type AtualizarSenha = z.infer<typeof atualizarSenhaSchema>;
 
 type Resultado<T> =
   | { sucesso: true; dados: T }

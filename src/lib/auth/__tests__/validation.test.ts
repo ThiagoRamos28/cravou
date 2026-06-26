@@ -3,6 +3,7 @@ import {
   credenciaisSchema,
   magicLinkSchema,
   perfilSchema,
+  atualizarSenhaSchema,
   validar,
 } from "@/lib/auth/validation";
 
@@ -39,5 +40,46 @@ describe("validar()", () => {
     expect(
       validar(perfilSchema, { apelido: "Zé", avatar_url: "" }).sucesso
     ).toBe(false);
+  });
+});
+
+describe("atualizarSenhaSchema", () => {
+  it("aceita dados válidos com senhas iguais", () => {
+    const r = validar(atualizarSenhaSchema, {
+      senha_atual: "senhavelha",
+      senha_nova: "senhanova123",
+      confirmar: "senhanova123",
+    });
+    expect(r.sucesso).toBe(true);
+  });
+
+  it("rejeita quando senha_nova tem menos de 6 caracteres", () => {
+    const r = validar(atualizarSenhaSchema, {
+      senha_atual: "senhavelha",
+      senha_nova: "abc",
+      confirmar: "abc",
+    });
+    expect(r.sucesso).toBe(false);
+    if (!r.sucesso) expect(r.erro).toMatch(/6 caracteres/i);
+  });
+
+  it("rejeita quando senhas não coincidem", () => {
+    const r = validar(atualizarSenhaSchema, {
+      senha_atual: "senhavelha",
+      senha_nova: "senhanova123",
+      confirmar: "diferente123",
+    });
+    expect(r.sucesso).toBe(false);
+    if (!r.sucesso) expect(r.erro).toMatch(/não coincidem/i);
+  });
+
+  it("rejeita quando senha_atual está vazia", () => {
+    const r = validar(atualizarSenhaSchema, {
+      senha_atual: "",
+      senha_nova: "senhanova123",
+      confirmar: "senhanova123",
+    });
+    expect(r.sucesso).toBe(false);
+    if (!r.sucesso) expect(r.erro).toMatch(/senha atual/i);
   });
 });
