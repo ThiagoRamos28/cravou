@@ -2,14 +2,6 @@
 
 import { useRouter, usePathname } from "next/navigation";
 
-const FASE_LABEL: Record<string, string> = {
-  grupos: "Grupos",
-  oitavas: "Oitavas",
-  quartas: "Quartas",
-  semi: "Semi",
-  final: "Final",
-};
-
 function chip(ativo: boolean) {
   return `cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
     ativo
@@ -19,59 +11,62 @@ function chip(ativo: boolean) {
 }
 
 export function JogosFiltro({
-  fases,
-  faseAtiva,
-  rodadaAtiva,
+  soAbertos = false,
+  soEncerrados = false,
+  jogosAbertosCount = 0,
 }: {
-  fases: { fase: string; rodadas: string[] }[];
-  faseAtiva: string;
-  rodadaAtiva: string;
+  soAbertos?: boolean;
+  soEncerrados?: boolean;
+  jogosAbertosCount?: number;
 }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  function ir(fase: string, rodada: string) {
+  function toggleAbertos() {
     const params = new URLSearchParams();
-    if (fase) params.set("fase", fase);
-    if (rodada) params.set("rodada", rodada);
+    if (!soAbertos) params.set("soAbertos", "1");
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
-  const rodadas = fases.find((f) => f.fase === faseAtiva)?.rodadas ?? [];
+  function toggleEncerrados() {
+    const params = new URLSearchParams();
+    if (!soEncerrados) params.set("encerrados", "1");
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  }
 
   return (
-    <div className="mb-6 flex flex-col gap-3">
-      {fases.length > 1 && (
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por fase">
-          {fases.map((f) => (
-            <button
-              key={f.fase}
-              type="button"
-              onClick={() => ir(f.fase, "")}
-              aria-current={f.fase === faseAtiva ? "true" : undefined}
-              className={chip(f.fase === faseAtiva)}
-            >
-              {FASE_LABEL[f.fase] ?? f.fase}
-            </button>
-          ))}
-        </div>
-      )}
-      {rodadas.length > 0 && (
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por rodada">
-          {rodadas.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => ir(faseAtiva, r)}
-              aria-current={r === rodadaAtiva ? "true" : undefined}
-              className={chip(r === rodadaAtiva)}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="mb-6 flex flex-wrap gap-2" role="group" aria-label="Filtrar jogos">
+      <button
+        type="button"
+        onClick={toggleAbertos}
+        aria-current={soAbertos ? "true" : undefined}
+        className={
+          soAbertos
+            ? chip(true)
+            : "cursor-pointer inline-flex items-center gap-1.5 rounded-full border border-accent/50 bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent/20"
+        }
+      >
+        {!soAbertos && (
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
+        )}
+        Abertos
+        {!soAbertos && jogosAbertosCount > 0 && (
+          <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold leading-none text-accent-foreground">
+            {jogosAbertosCount}
+          </span>
+        )}
+      </button>
+
+      <button
+        type="button"
+        onClick={toggleEncerrados}
+        aria-current={soEncerrados ? "true" : undefined}
+        className={chip(soEncerrados)}
+      >
+        Encerrados
+      </button>
     </div>
   );
 }

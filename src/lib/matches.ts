@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { palpiteAberto } from "@/lib/palpites/corte";
 
 export type Match = {
   id: string;
@@ -17,16 +18,28 @@ export type Match = {
 const COLS =
   "id, fase, rodada, time_casa, time_fora, bandeira_casa, bandeira_fora, inicio_em, status, placar_casa, placar_fora";
 
-export async function listarJogos(
-  filtro?: { fase?: string; rodada?: string }
-): Promise<Match[]> {
+export async function listarJogos(filtro?: {
+  fase?: string;
+  rodada?: string;
+  soAbertos?: boolean;
+  soEncerrados?: boolean;
+  minutosCorte?: number;
+  limite?: number;
+}): Promise<Match[]> {
   try {
     const supabase = await createClient();
     let q = supabase.from("matches").select(COLS).order("inicio_em", { ascending: true });
     if (filtro?.fase) q = q.eq("fase", filtro.fase);
     if (filtro?.rodada) q = q.eq("rodada", filtro.rodada);
+    if (filtro?.soEncerrados) q = q.eq("status", "finalizado");
     const { data } = await q;
-    return (data as Match[]) ?? [];
+    let resultado = (data as Match[]) ?? [];
+    if (filtro?.soAbertos) {
+      const corte = filtro.minutosCorte ?? 10;
+      resultado = resultado.filter((m) => palpiteAberto(m.inicio_em, corte));
+    }
+    if (filtro?.limite) resultado = resultado.slice(0, filtro.limite);
+    return resultado;
   } catch {
     return [];
   }

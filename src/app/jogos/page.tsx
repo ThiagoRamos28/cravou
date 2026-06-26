@@ -4,29 +4,37 @@ import { SiteFooter } from "@/components/site-footer";
 import { MatchCard } from "@/components/jogos/match-card";
 import { JogosFiltro } from "@/components/jogos/jogos-filtro";
 import { getSessao } from "@/lib/auth/profile";
-import { listarJogos, listarFasesERodadas } from "@/lib/matches";
+import { listarJogos } from "@/lib/matches";
 import { listarMeusPalpites, getMinutosCorte } from "@/lib/predictions";
+import { palpiteAberto } from "@/lib/palpites/corte";
 
 export default async function JogosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ fase?: string; rodada?: string }>;
+  searchParams: Promise<{ soAbertos?: string; encerrados?: string }>;
 }) {
   const sessao = await getSessao();
   if (!sessao) redirect("/entrar");
 
-  const { fase, rodada } = await searchParams;
-  const fases = await listarFasesERodadas();
+  const { soAbertos, encerrados } = await searchParams;
+  const soAbertosAtivo = soAbertos === "1";
+  const soEncerradosAtivo = encerrados === "1";
 
-  // Default: primeira fase existente quando nenhuma foi escolhida.
-  const faseAtiva = fase ?? fases[0]?.fase ?? "";
-  const rodadaAtiva = rodada ?? "";
-
-  const [jogos, palpites, minutosCorte] = await Promise.all([
-    listarJogos({ fase: faseAtiva || undefined, rodada: rodadaAtiva || undefined }),
+  const minutosCorte = await getMinutosCorte();
+  const [jogos, palpites] = await Promise.all([
+    listarJogos({
+      soAbertos: soAbertosAtivo,
+      soEncerrados: soEncerradosAtivo,
+      minutosCorte,
+    }),
     listarMeusPalpites(),
-    getMinutosCorte(),
   ]);
+
+  const jogosAbertosCount = soAbertosAtivo
+    ? jogos.length
+    : jogos.filter(
+        (j) => j.status === "agendado" && palpiteAberto(j.inicio_em, minutosCorte)
+      ).length;
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
@@ -35,15 +43,21 @@ export default async function JogosPage({
         <h1 className="mb-6 font-display text-3xl font-bold uppercase tracking-tight">
           Jogos da Copa
         </h1>
-        {fases.length > 0 && (
-          <JogosFiltro fases={fases} faseAtiva={faseAtiva} rodadaAtiva={rodadaAtiva} />
-        )}
+        <JogosFiltro
+          soAbertos={soAbertosAtivo}
+          soEncerrados={soEncerradosAtivo}
+          jogosAbertosCount={jogosAbertosCount}
+        />
         {jogos.length === 0 ? (
           <p className="text-muted-foreground">
-            Nenhum jogo neste recorte. Ajuste o filtro acima.
+            {soAbertosAtivo
+              ? "Nenhum jogo aberto para palpite no momento."
+              : soEncerradosAtivo
+                ? "Nenhum jogo encerrado ainda."
+                : "Nenhum jogo encontrado."}
           </p>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {jogos.map((j) => (
               <MatchCard
                 key={j.id}
