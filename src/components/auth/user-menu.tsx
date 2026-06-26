@@ -62,8 +62,8 @@ export function UserMenu({
             role="menu"
             initial={reducedMotion ? false : { opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={reducedMotion ? {} : { opacity: 0, y: 4 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: reducedMotion ? 0 : 0.15, ease: "easeOut" }}
             className="absolute right-0 top-full z-10 mt-1 min-w-[160px] rounded-xl border border-border bg-card shadow-md"
           >
             <div className="p-1">

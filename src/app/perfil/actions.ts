@@ -76,6 +76,7 @@ export async function atualizarSenha(
   } = await supabase.auth.getUser();
   if (!user) redirect("/entrar");
 
+  // signInWithPassword verifica a senha atual; como efeito colateral, rotaciona os cookies da sessão.
   const { error: authError } = await supabase.auth.signInWithPassword({
     email: user.email!,
     password: v.dados.senha_atual,
