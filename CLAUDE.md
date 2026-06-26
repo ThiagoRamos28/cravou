@@ -74,6 +74,7 @@ src/
 - Segredos nunca no client: só `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   são expostos ao browser. Service role / API-Football só em Edge Functions. `.env.local` é git-ignored.
 - Mensagens de commit terminam com `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+- **Fuso horário:** todo o sistema usa `America/Sao_Paulo` (BRT, UTC−3) para exibição ao usuário. `inicio_em` é armazenado em UTC no banco; toda exibição deve converter com `{ timeZone: "America/Sao_Paulo" }`. Datas/horas em textos de UI, logs, relatórios e e-mails devem estar em horário de Brasília.
 
 ## Roadmap (fases)
 

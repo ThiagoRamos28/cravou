@@ -31,10 +31,15 @@ export default async function JogosPage({
     listarMeusPalpites(),
   ]);
 
+  const agora = Date.now();
   const jogosAbertosCount = soAbertosAtivo
     ? jogos.length
     : jogos.filter(
-        (j) => j.status === "ao_vivo" || (j.status === "agendado" && palpiteAberto(j.inicio_em, minutosCorte))
+        (j) =>
+          j.status !== "finalizado" &&
+          (j.status === "ao_vivo" ||
+            palpiteAberto(j.inicio_em, minutosCorte) ||
+            new Date(j.inicio_em).getTime() <= agora)
       ).length;
 
   return (

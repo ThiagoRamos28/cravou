@@ -36,8 +36,13 @@ export async function listarJogos(filtro?: {
     let resultado = (data as Match[]) ?? [];
     if (filtro?.soAbertos) {
       const corte = filtro.minutosCorte ?? 10;
+      const agora = Date.now();
       resultado = resultado.filter(
-        (m) => m.status === "ao_vivo" || palpiteAberto(m.inicio_em, corte)
+        (m) =>
+          m.status !== "finalizado" &&
+          (m.status === "ao_vivo" ||
+            palpiteAberto(m.inicio_em, corte) ||
+            new Date(m.inicio_em).getTime() <= agora)
       );
     }
     if (filtro?.limite) resultado = resultado.slice(0, filtro.limite);
