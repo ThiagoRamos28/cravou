@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { listarPosts, type PostFeed } from "@/lib/feed";
+import { listarPosts, listarPalpitesAmigos, type PostFeed, type PalpiteAmigo } from "@/lib/feed";
 
 export async function publicarPost(
   conteudo: string,
@@ -116,4 +116,11 @@ export async function carregarMaisPosts(
   userId: string
 ): Promise<PostFeed[]> {
   return listarPosts(userId, offset);
+}
+
+export async function carregarMaisPalpites(
+  offset: number,
+  userId: string
+): Promise<PalpiteAmigo[]> {
+  return listarPalpitesAmigos(userId, offset);
 }
