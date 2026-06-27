@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { PalpiteAmigoCard } from "./palpite-amigo-card";
 import { carregarMaisPalpites } from "@/app/feed/actions";
 import type { PalpiteAmigo } from "@/lib/feed";
-import { PALPITE_LIMIT } from "@/lib/feed";
+import { PALPITE_LIMIT } from "@/lib/feed-constants";
 import { Button } from "@/components/ui/button";
 
 type PalpitesAmigosListProps = {

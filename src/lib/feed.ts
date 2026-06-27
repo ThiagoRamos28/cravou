@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { POST_LIMIT, PALPITE_LIMIT } from "@/lib/feed-constants";
+export { PALPITE_LIMIT } from "@/lib/feed-constants";
 
 export type PostFeed = {
   id: string;
@@ -45,7 +47,7 @@ export type PalpiteResumido = {
   pontos: number | null;
 };
 
-const POST_LIMIT = 20;
+// POST_LIMIT imported from feed-constants
 
 export async function listarPosts(
   userId: string,
@@ -272,7 +274,7 @@ export type PalpiteAmigo = PalpiteResumido & {
   feito_em: string;
 };
 
-export const PALPITE_LIMIT = 20;
+// PALPITE_LIMIT imported from feed-constants
 
 export async function listarPalpitesAmigos(
   sessaoId: string,
