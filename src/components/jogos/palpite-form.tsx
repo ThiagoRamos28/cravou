@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Lock, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { salvarPalpite, type EstadoPalpite } from "@/app/jogos/actions";
 import { palpiteAberto } from "@/lib/palpites/corte";
+import { CompartilharModal } from "@/components/palpites/compartilhar-modal";
 import type { Match } from "@/lib/matches";
 import type { Prediction } from "@/lib/predictions";
 
@@ -25,9 +26,13 @@ export function PalpiteForm({
   );
   const { toast } = useToast();
   const reduce = useReducedMotion();
+  const [modalFechado, setModalFechado] = useState(false);
 
   useEffect(() => {
-    if (estado.ok) toast({ message: "Palpite salvo!", variant: "success" });
+    if (estado.ok) {
+      toast({ message: "Palpite salvo!", variant: "success" });
+      setModalFechado(false);
+    }
   }, [estado.ok, toast]);
 
   useEffect(() => {
@@ -38,6 +43,13 @@ export function PalpiteForm({
     match.status === "agendado" && palpiteAberto(match.inicio_em, minutosCorte);
 
   const offset = reduce ? 0 : 8;
+
+  const mostrarModal =
+    !modalFechado &&
+    !!estado.ok &&
+    !!estado.jogoId &&
+    estado.palpiteCasa !== undefined &&
+    estado.palpiteFora !== undefined;
 
   if (!aberto) {
     const pontuado =
@@ -116,60 +128,74 @@ export function PalpiteForm({
   }
 
   return (
-    <motion.div
-      key="open"
-      className="mt-3"
-      initial={{ opacity: reduce ? 1 : 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: reduce ? 1 : 0 }}
-      transition={{ duration: reduce ? 0 : 0.2 }}
-    >
-      <form action={formAction} className="flex flex-wrap items-center justify-center gap-2">
-        <input type="hidden" name="match_id" value={match.id} />
-        <input type="hidden" name="inicio_em" value={match.inicio_em} />
-        <span className="text-xs text-muted-foreground">Seu palpite:</span>
-        <label className="sr-only" htmlFor={`casa-${match.id}`}>
-          Palpite {match.time_casa}
-        </label>
-        <input
-          id={`casa-${match.id}`}
-          name="palpite_casa"
-          type="number"
-          min={0}
-          defaultValue={palpite?.palpite_casa ?? ""}
-          className="h-9 w-14 rounded-lg border border-border bg-background px-2 text-center"
+    <>
+      {mostrarModal && (
+        <CompartilharModal
+          jogoId={estado.jogoId!}
+          timeCasa={estado.timeCasa ?? match.time_casa}
+          timeFora={estado.timeFora ?? match.time_fora}
+          palpiteCasa={estado.palpiteCasa!}
+          palpiteFora={estado.palpiteFora!}
+          onClose={() => setModalFechado(true)}
         />
-        <span className="text-muted-foreground">×</span>
-        <label className="sr-only" htmlFor={`fora-${match.id}`}>
-          Palpite {match.time_fora}
-        </label>
-        <input
-          id={`fora-${match.id}`}
-          name="palpite_fora"
-          type="number"
-          min={0}
-          defaultValue={palpite?.palpite_fora ?? ""}
-          className="h-9 w-14 rounded-lg border border-border bg-background px-2 text-center"
-        />
-        <Button type="submit" variant="primary" size="sm" disabled={pending}>
-          {pending ? "Salvando..." : "Salvar"}
-        </Button>
-        {estado?.erro && (
-          <span className="text-xs text-red-600 dark:text-red-400">
-            {estado.erro}
-          </span>
-        )}
-        {estado?.ok && (
-          <motion.span
-            initial={{ opacity: 0, y: reduce ? 0 : 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2 }}
-            className="text-xs text-primary"
-          >
-            {estado.ok}
-          </motion.span>
-        )}
-      </form>
-    </motion.div>
+      )}
+      <motion.div
+        key="open"
+        className="mt-3"
+        initial={{ opacity: reduce ? 1 : 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: reduce ? 1 : 0 }}
+        transition={{ duration: reduce ? 0 : 0.2 }}
+      >
+        <form action={formAction} className="flex flex-wrap items-center justify-center gap-2">
+          <input type="hidden" name="match_id" value={match.id} />
+          <input type="hidden" name="inicio_em" value={match.inicio_em} />
+          <input type="hidden" name="time_casa" value={match.time_casa} />
+          <input type="hidden" name="time_fora" value={match.time_fora} />
+          <span className="text-xs text-muted-foreground">Seu palpite:</span>
+          <label className="sr-only" htmlFor={`casa-${match.id}`}>
+            Palpite {match.time_casa}
+          </label>
+          <input
+            id={`casa-${match.id}`}
+            name="palpite_casa"
+            type="number"
+            min={0}
+            defaultValue={palpite?.palpite_casa ?? ""}
+            className="h-9 w-14 rounded-lg border border-border bg-background px-2 text-center"
+          />
+          <span className="text-muted-foreground">×</span>
+          <label className="sr-only" htmlFor={`fora-${match.id}`}>
+            Palpite {match.time_fora}
+          </label>
+          <input
+            id={`fora-${match.id}`}
+            name="palpite_fora"
+            type="number"
+            min={0}
+            defaultValue={palpite?.palpite_fora ?? ""}
+            className="h-9 w-14 rounded-lg border border-border bg-background px-2 text-center"
+          />
+          <Button type="submit" variant="primary" size="sm" disabled={pending}>
+            {pending ? "Salvando..." : "Salvar"}
+          </Button>
+          {estado?.erro && (
+            <span className="text-xs text-red-600 dark:text-red-400">
+              {estado.erro}
+            </span>
+          )}
+          {estado?.ok && (
+            <motion.span
+              initial={{ opacity: 0, y: reduce ? 0 : 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="text-xs text-primary"
+            >
+              {estado.ok}
+            </motion.span>
+          )}
+        </form>
+      </motion.div>
+    </>
   );
 }
