@@ -267,6 +267,88 @@ export async function isSeguindo(
 
 export type UsuarioComFollow = PerfilBasico & { ja_sigo: boolean };
 
+export type PalpiteAmigo = PalpiteResumido & {
+  autor: { id: string; apelido: string; avatar_url: string | null };
+  feito_em: string;
+};
+
+const PALPITE_LIMIT = 20;
+
+export async function listarPalpitesAmigos(
+  sessaoId: string,
+  offset: number = 0
+): Promise<PalpiteAmigo[]> {
+  try {
+    const supabase = await createClient();
+
+    const { data: follows } = await supabase
+      .from("follows")
+      .select("following_id")
+      .eq("follower_id", sessaoId);
+
+    const amigos = (follows ?? []).map((f) => f.following_id as string);
+    if (amigos.length === 0) return [];
+
+    const { data } = await supabase
+      .from("predictions")
+      .select(
+        "palpite_casa, palpite_fora, pontos, created_at, " +
+          "autor:profiles!predictions_user_id_fkey(id, apelido, avatar_url), " +
+          "match:matches!predictions_match_id_fkey(" +
+          "id, time_casa, time_fora, bandeira_casa, bandeira_fora, " +
+          "placar_casa, placar_fora, status" +
+          ")"
+      )
+      .in("user_id", amigos)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + PALPITE_LIMIT - 1);
+
+    type RawPA = {
+      palpite_casa: number;
+      palpite_fora: number;
+      pontos: number | null;
+      created_at: string;
+      autor: { id: string; apelido: string | null; avatar_url: string | null } | null;
+      match: {
+        id: string;
+        time_casa: string;
+        time_fora: string;
+        bandeira_casa: string | null;
+        bandeira_fora: string | null;
+        placar_casa: number | null;
+        placar_fora: number | null;
+        status: "agendado" | "ao_vivo" | "finalizado";
+      };
+    };
+
+    return (data ?? []).map((r) => {
+      const row = r as unknown as RawPA;
+      const m = row.match;
+      return {
+        jogo_id: m.id,
+        time_casa: m.time_casa,
+        time_fora: m.time_fora,
+        bandeira_casa: m.bandeira_casa,
+        bandeira_fora: m.bandeira_fora,
+        palpite_casa: row.palpite_casa,
+        palpite_fora: row.palpite_fora,
+        placar_casa: m.placar_casa,
+        placar_fora: m.placar_fora,
+        status: m.status,
+        pontos: row.pontos,
+        feito_em: row.created_at,
+        autor: {
+          id: row.autor?.id ?? "",
+          apelido: row.autor?.apelido ?? "Usuário",
+          avatar_url: row.autor?.avatar_url ?? null,
+        },
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function listarUsuarios(sessaoId: string): Promise<UsuarioComFollow[]> {
   try {
     const supabase = await createClient();
