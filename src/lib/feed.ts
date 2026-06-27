@@ -264,3 +264,35 @@ export async function isSeguindo(
     return false;
   }
 }
+
+export type UsuarioComFollow = PerfilBasico & { ja_sigo: boolean };
+
+export async function listarUsuarios(sessaoId: string): Promise<UsuarioComFollow[]> {
+  try {
+    const supabase = await createClient();
+
+    const [{ data: perfis }, { data: seguindo }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, apelido, avatar_url")
+        .not("apelido", "is", null)
+        .neq("id", sessaoId)
+        .order("apelido", { ascending: true }),
+      supabase
+        .from("follows")
+        .select("following_id")
+        .eq("follower_id", sessaoId),
+    ]);
+
+    const seguindoSet = new Set((seguindo ?? []).map((f) => f.following_id as string));
+
+    return (perfis ?? []).map((p) => ({
+      id: p.id as string,
+      apelido: (p.apelido as string) ?? "Usuário",
+      avatar_url: p.avatar_url as string | null,
+      ja_sigo: seguindoSet.has(p.id as string),
+    }));
+  } catch {
+    return [];
+  }
+}
