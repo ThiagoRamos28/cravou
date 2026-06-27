@@ -30,6 +30,12 @@ export async function SiteHeader() {
           {perfil && (
             <nav className="flex items-center gap-0.5 sm:gap-1">
               <Link
+                href="/feed"
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                Feed
+              </Link>
+              <Link
                 href="/jogos"
                 className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
