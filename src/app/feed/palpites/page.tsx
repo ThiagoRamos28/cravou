@@ -1,26 +1,16 @@
 import { redirect } from "next/navigation";
 import { getSessao } from "@/lib/auth/profile";
-import { listarPosts, listarPerfis, listarJogosParaComposer } from "@/lib/feed";
+import { listarPalpitesAmigos } from "@/lib/feed";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { PostComposer } from "@/components/feed/post-composer";
-import { PostList } from "@/components/feed/post-list";
 import { FeedTabs } from "@/components/feed/feed-tabs";
+import { PalpitesAmigosList } from "@/components/feed/palpites-amigos-list";
 
-export default async function FeedPage() {
+export default async function FeedPalpitesPage() {
   const sessao = await getSessao();
   if (!sessao) redirect("/entrar");
 
-  const [posts, perfis, jogos] = await Promise.all([
-    listarPosts(sessao.userId),
-    listarPerfis(),
-    listarJogosParaComposer(),
-  ]);
-
-  const perfisMap: Record<string, string> = {};
-  for (const p of perfis) {
-    if (p.apelido) perfisMap[p.apelido] = p.id;
-  }
+  const palpites = await listarPalpitesAmigos(sessao.userId);
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
@@ -31,10 +21,8 @@ export default async function FeedPage() {
         </h1>
         <div className="flex flex-col gap-4">
           <FeedTabs />
-          <PostComposer jogos={jogos} perfis={perfis} />
-          <PostList
-            postsIniciais={posts}
-            perfisMap={perfisMap}
+          <PalpitesAmigosList
+            palpitesIniciais={palpites}
             userId={sessao.userId}
           />
         </div>
