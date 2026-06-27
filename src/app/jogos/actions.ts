@@ -7,7 +7,15 @@ import { palpiteSchema } from "@/lib/palpites/validation";
 import { palpiteAberto } from "@/lib/palpites/corte";
 import { getMinutosCorte } from "@/lib/predictions";
 
-export type EstadoPalpite = { erro?: string; ok?: string };
+export type EstadoPalpite = {
+  erro?: string;
+  ok?: string;
+  jogoId?: string;
+  timeCasa?: string;
+  timeFora?: string;
+  palpiteCasa?: number;
+  palpiteFora?: number;
+};
 
 export async function salvarPalpite(
   _prev: EstadoPalpite,
@@ -16,6 +24,9 @@ export async function salvarPalpite(
   const matchId = String(formData.get("match_id") ?? "");
   const inicioEm = String(formData.get("inicio_em") ?? "");
   if (!matchId || !inicioEm) return { erro: "Jogo inválido." };
+
+  const timeCasa = String(formData.get("time_casa") ?? "");
+  const timeFora = String(formData.get("time_fora") ?? "");
 
   const v = validar(palpiteSchema, {
     palpite_casa: formData.get("palpite_casa"),
@@ -46,9 +57,15 @@ export async function salvarPalpite(
     { onConflict: "user_id,match_id" }
   );
 
-  // Se a RLS barrar (corte/limite), o erro cai aqui.
   if (error) return { erro: "Não foi possível salvar o palpite." };
 
   revalidatePath("/jogos");
-  return { ok: "Palpite salvo!" };
+  return {
+    ok: "Palpite salvo!",
+    jogoId: matchId,
+    timeCasa,
+    timeFora,
+    palpiteCasa: v.dados.palpite_casa,
+    palpiteFora: v.dados.palpite_fora,
+  };
 }
