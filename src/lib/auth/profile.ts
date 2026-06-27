@@ -41,3 +41,21 @@ export async function getPerfil(): Promise<Profile | null> {
     return null;
   }
 }
+
+export async function getPerfilPublico(id: string): Promise<Profile | null> {
+  try {
+    const supabase = await createClient();
+    const sessao = await getSessao();
+    if (!sessao) return null;
+
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, apelido, avatar_url, is_admin")
+      .eq("id", id)
+      .single();
+
+    return (data as Profile) ?? null;
+  } catch {
+    return null;
+  }
+}
