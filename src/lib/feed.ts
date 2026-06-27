@@ -272,7 +272,7 @@ export type PalpiteAmigo = PalpiteResumido & {
   feito_em: string;
 };
 
-const PALPITE_LIMIT = 20;
+export const PALPITE_LIMIT = 20;
 
 export async function listarPalpitesAmigos(
   sessaoId: string,
