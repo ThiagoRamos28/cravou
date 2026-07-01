@@ -6,7 +6,12 @@ export type RankingRow = {
   avatar_url: string | null;
   pontos: number;
   cravadas: number;
+  acertos_saldo: number;
+  acertos_resultado: number;
+  acertos_gols: number;
+  erros: number;
   palpites_pontuados: number;
+  total_palpites: number;
 };
 
 // Ranking de todos os usuários, já ordenado (pontos desc, cravadas desc).

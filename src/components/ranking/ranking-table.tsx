@@ -1,6 +1,52 @@
-import { Target } from "lucide-react";
+import { Target, ArrowLeftRight, Trophy, CircleDot, XCircle, Equal } from "lucide-react";
 import type { RankingRow } from "@/lib/ranking";
 import { avatarPadrao } from "@/lib/avatars";
+
+type ColIcone = {
+  icon: React.ReactNode;
+  label: string;
+  pts: number;
+  valor: (l: RankingRow) => number;
+};
+
+const COLUNAS_ICONE: ColIcone[] = [
+  {
+    icon: <Target className="mx-auto h-4 w-4 text-accent" />,
+    label: "Cravou! — placar exato (10 pts)",
+    pts: 10,
+    valor: (l) => l.cravadas,
+  },
+  {
+    icon: <ArrowLeftRight className="mx-auto h-4 w-4 text-primary" />,
+    label: "Saldo certo — vencedor + diferença de gols (7 pts)",
+    pts: 7,
+    valor: (l) => l.acertos_saldo,
+  },
+  {
+    icon: <Trophy className="mx-auto h-4 w-4 text-yellow-500" />,
+    label: "Vencedor — acertou o resultado V/E/D (5 pts)",
+    pts: 5,
+    valor: (l) => l.acertos_resultado,
+  },
+  {
+    icon: <CircleDot className="mx-auto h-4 w-4 text-muted-foreground" />,
+    label: "Gols parciais — acertou os gols de um time (2 pts)",
+    pts: 2,
+    valor: (l) => l.acertos_gols,
+  },
+  {
+    icon: <XCircle className="mx-auto h-4 w-4 text-red-500" />,
+    label: "Erros — palpites já pontuados com 0 pts",
+    pts: -1,
+    valor: (l) => l.erros,
+  },
+  {
+    icon: <Equal className="mx-auto h-4 w-4 text-cyan-500" />,
+    label: "Total de palpites encerrados (já pontuados)",
+    pts: -2,
+    valor: (l) => l.palpites_pontuados,
+  },
+];
 
 export function RankingTable({
   linhas,
@@ -25,15 +71,32 @@ export function RankingTable({
           <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
             <th className="px-3 py-3 text-center font-semibold">#</th>
             <th className="px-3 py-3 text-left font-semibold">Jogador</th>
-            <th className="px-3 py-3 text-center font-semibold" title="Placares cravados">
-              <Target className="mx-auto h-4 w-4" aria-label="Cravadas" />
-            </th>
+            {COLUNAS_ICONE.map((col) => (
+              <th
+                key={col.pts}
+                className="px-2 py-3 text-center font-semibold"
+                title={col.label}
+              >
+                {col.icon}
+              </th>
+            ))}
             <th className="px-3 py-3 text-right font-semibold">Pontos</th>
+            <th
+              className="px-3 py-3 text-right font-semibold"
+              title="Aproveitamento (pontos / máximo possível)"
+            >
+              Aprov.
+            </th>
           </tr>
         </thead>
         <tbody>
           {linhas.map((l, i) => {
             const eu = l.user_id === meuId;
+            const maxPontos = l.palpites_pontuados * 10;
+            const aproveitamento =
+              maxPontos > 0
+                ? `${Math.round((l.pontos / maxPontos) * 100)}%`
+                : "—";
             return (
               <tr
                 key={l.user_id}
@@ -65,11 +128,19 @@ export function RankingTable({
                     </span>
                   </div>
                 </td>
-                <td className="px-3 py-3 text-center tabular-nums text-muted-foreground">
-                  {l.cravadas}
-                </td>
+                {COLUNAS_ICONE.map((col) => (
+                  <td
+                    key={col.pts}
+                    className="px-2 py-3 text-center tabular-nums text-muted-foreground"
+                  >
+                    {col.valor(l) > 0 ? col.valor(l) : "—"}
+                  </td>
+                ))}
                 <td className="px-3 py-3 text-right font-display text-base font-bold tabular-nums">
                   {l.pontos}
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
+                  {aproveitamento}
                 </td>
               </tr>
             );

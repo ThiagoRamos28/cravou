@@ -59,6 +59,12 @@ export async function SiteHeader() {
               >
                 Histórico
               </Link>
+              <Link
+                href="/regras"
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                Regras
+              </Link>
             </nav>
           )}
         </div>
