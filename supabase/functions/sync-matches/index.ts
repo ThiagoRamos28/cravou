@@ -1,5 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
-import { fixtureToRow, resultToRow, type MatchRow } from "../_shared/fixtures.ts";
+import {
+  fixtureToRow,
+  resultToRow,
+  placar90Min,
+  rodadaFromTournamentName,
+  type MatchRow,
+  type FsMatchDetails,
+} from "../_shared/fixtures.ts";
 
 const BLOCOS_GRUPOS = [
   { rodada: "1", ate: "2026-06-18T00:00:00.000Z" },
@@ -30,33 +37,60 @@ async function withRetry<T>(fn: () => Promise<T>, tentativas = 3): Promise<T> {
   throw ultimoErro;
 }
 
-async function fsGet(path: string): Promise<unknown[]> {
-  const host = Deno.env.get("RAPIDAPI_HOST") ?? "flashscore4.p.rapidapi.com";
-  const template = Deno.env.get("FS_TEMPLATE_ID")!;
-  const season = Deno.env.get("FS_SEASON_ID")!;
-  const stage = Deno.env.get("FS_STAGE_ID")!;
-  const url =
-    `https://${host}/api/flashscore/v2/tournaments/${path}` +
-    `?tournament_template_id=${template}&season_id=${season}&tournament_stage_id=${stage}`;
+const HOST = Deno.env.get("RAPIDAPI_HOST") ?? "flashscore4.p.rapidapi.com";
+const RAPIDAPI_KEY = Deno.env.get("RAPIDAPI_KEY")!;
 
+async function fsFetch(path: string): Promise<unknown> {
   return withRetry(async () => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15_000);
     try {
-      const resp = await fetch(url, {
+      const resp = await fetch(`https://${HOST}${path}`, {
         headers: {
-          "x-rapidapi-host": host,
-          "x-rapidapi-key": Deno.env.get("RAPIDAPI_KEY")!,
+          "x-rapidapi-host": HOST,
+          "x-rapidapi-key": RAPIDAPI_KEY,
         },
         signal: controller.signal,
       });
       if (!resp.ok) throw new Error(`FlashScore ${path} ${resp.status}`);
-      const data = await resp.json();
-      return Array.isArray(data) ? data : [];
+      return await resp.json();
     } finally {
       clearTimeout(timer);
     }
   });
+}
+
+type TournamentStage = { tournament_stage_id: string; name: string };
+type TournamentIds = {
+  tournament_template_id: string;
+  season_id: string;
+  tournament_stages: TournamentStage[];
+};
+
+async function descobrirStages(): Promise<TournamentIds> {
+  const url = Deno.env.get("FS_TOURNAMENT_URL")!;
+  const data = await fsFetch(
+    `/api/flashscore/v2/tournaments/ids?tournament_url=${encodeURIComponent(url)}`
+  );
+  return data as TournamentIds;
+}
+
+async function fsGetLista(
+  path: "fixtures" | "results",
+  template: string,
+  season: string,
+  stage: string
+): Promise<unknown[]> {
+  const data = await fsFetch(
+    `/api/flashscore/v2/tournaments/${path}` +
+      `?tournament_template_id=${template}&season_id=${season}&tournament_stage_id=${stage}`
+  );
+  return Array.isArray(data) ? data : [];
+}
+
+async function fsGetDetails(matchId: string): Promise<FsMatchDetails> {
+  const data = await fsFetch(`/api/flashscore/v2/matches/details?match_id=${matchId}`);
+  return data as FsMatchDetails;
 }
 
 Deno.serve(async (req) => {
@@ -70,18 +104,25 @@ Deno.serve(async (req) => {
 
   let rows: MatchRow[];
   try {
-    const [fixtures, results] = await Promise.all([
-      fsGet("fixtures"),
-      fsGet("results"),
-    ]);
+    const ids = await descobrirStages();
     const porId = new Map<string, MatchRow>();
-    for (const f of fixtures) {
-      const ff = f as { match_id: string; timestamp: number };
-      porId.set(ff.match_id, fixtureToRow(f as never, "grupos", rodadaGrupos(ff.timestamp)));
-    }
-    for (const r of results) {
-      const rr = r as { match_id: string; timestamp: number };
-      porId.set(rr.match_id, resultToRow(r as never, "grupos", rodadaGrupos(rr.timestamp)));
+
+    for (const stage of ids.tournament_stages) {
+      const fase = stage.name === "Main" ? "grupos" : "mata-mata";
+      const [fixtures, results] = await Promise.all([
+        fsGetLista("fixtures", ids.tournament_template_id, ids.season_id, stage.tournament_stage_id),
+        fsGetLista("results", ids.tournament_template_id, ids.season_id, stage.tournament_stage_id),
+      ]);
+      for (const f of fixtures) {
+        const ff = f as { match_id: string; timestamp: number };
+        const rodada = fase === "grupos" ? rodadaGrupos(ff.timestamp) : "";
+        porId.set(ff.match_id, fixtureToRow(f as never, fase, rodada));
+      }
+      for (const r of results) {
+        const rr = r as { match_id: string; timestamp: number };
+        const rodada = fase === "grupos" ? rodadaGrupos(rr.timestamp) : "";
+        porId.set(rr.match_id, resultToRow(r as never, fase, rodada));
+      }
     }
     rows = [...porId.values()];
   } catch (e) {
@@ -107,34 +148,66 @@ Deno.serve(async (req) => {
     .eq("placar_manual", true);
   const idsManuais = new Set((manuais ?? []).map((m) => m.api_fixture_id));
 
-  const paraUpsert = rows
-    .filter((r) => !idsManuais.has(r.api_fixture_id))
-    .map((r) => ({ ...r, atualizado_em: new Date().toISOString() }));
+  const paraUpsert = rows.filter((r) => !idsManuais.has(r.api_fixture_id));
+
+  const apiIds = paraUpsert.map((r) => r.api_fixture_id);
+  const { data: existentes } = await supabase
+    .from("matches")
+    .select("id, api_fixture_id, placar_casa, placar_fora, status, time_casa, time_fora")
+    .in("api_fixture_id", apiIds.length > 0 ? apiIds : ["__nenhum__"]);
+
+  const mapaExistentes = new Map(
+    (existentes ?? []).map((m) => [
+      m.api_fixture_id as string,
+      {
+        id: m.id as string,
+        placar_casa: m.placar_casa as number | null,
+        placar_fora: m.placar_fora as number | null,
+        status: m.status as string,
+        time_casa: m.time_casa as string,
+        time_fora: m.time_fora as string,
+      },
+    ])
+  );
+
+  // Para jogos que viram "finalizado" pela 1ª vez, busca o detalhe (placar 90min real)
+  const transicoes = paraUpsert.filter((r) => {
+    if (r.status !== "finalizado") return false;
+    const ex = mapaExistentes.get(r.api_fixture_id);
+    return !ex || ex.status !== "finalizado";
+  });
+
+  await Promise.all(
+    transicoes.map(async (r) => {
+      try {
+        const detalhes = await fsGetDetails(r.api_fixture_id);
+        const calculado = placar90Min(detalhes);
+        r.placar_casa = calculado.placar_casa;
+        r.placar_fora = calculado.placar_fora;
+        r.decisao = calculado.decisao;
+        r.placar_penaltis_casa = calculado.placar_penaltis_casa;
+        r.placar_penaltis_fora = calculado.placar_penaltis_fora;
+        if (r.fase === "mata-mata" && detalhes.tournament?.name) {
+          r.rodada = rodadaFromTournamentName(detalhes.tournament.name);
+        }
+      } catch (e) {
+        console.error(
+          JSON.stringify({
+            evento: "match_details_erro",
+            api_fixture_id: r.api_fixture_id,
+            mensagem: e instanceof Error ? e.message : String(e),
+          })
+        );
+      }
+    })
+  );
 
   if (paraUpsert.length > 0) {
-    // Busca placares atuais ANTES do upsert para detectar mudanças
-    const apiIds = paraUpsert.map((r) => r.api_fixture_id);
-    const { data: existentes } = await supabase
-      .from("matches")
-      .select("id, api_fixture_id, placar_casa, placar_fora, time_casa, time_fora")
-      .in("api_fixture_id", apiIds);
-
-    const mapaExistentes = new Map(
-      (existentes ?? []).map((m) => [
-        m.api_fixture_id as string,
-        {
-          id: m.id as string,
-          placar_casa: m.placar_casa as number | null,
-          placar_fora: m.placar_fora as number | null,
-          time_casa: m.time_casa as string,
-          time_fora: m.time_fora as string,
-        },
-      ])
-    );
+    const comTimestamp = paraUpsert.map((r) => ({ ...r, atualizado_em: new Date().toISOString() }));
 
     const { error } = await supabase
       .from("matches")
-      .upsert(paraUpsert, { onConflict: "api_fixture_id" });
+      .upsert(comTimestamp, { onConflict: "api_fixture_id" });
 
     if (error) {
       console.error(JSON.stringify({ evento: "sync_upsert_erro", mensagem: error.message }));
@@ -144,11 +217,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Detecta e registra mudanças de placar no audit_log
-    const mudancas = paraUpsert
+    const mudancas = comTimestamp
       .filter((r) => {
         const ex = mapaExistentes.get(r.api_fixture_id);
-        if (!ex) return false; // novo jogo — sem estado anterior
+        if (!ex) return false;
         return (
           r.placar_casa != null &&
           r.placar_fora != null &&
