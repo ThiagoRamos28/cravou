@@ -68,7 +68,10 @@ type TournamentIds = {
 };
 
 async function descobrirStages(): Promise<TournamentIds> {
-  const url = Deno.env.get("FS_TOURNAMENT_URL")!;
+  const url = Deno.env.get("FS_TOURNAMENT_URL");
+  if (!url) {
+    throw new Error("FS_TOURNAMENT_URL não configurado (secret ausente na Edge Function)");
+  }
   const data = await fsFetch(
     `/api/flashscore/v2/tournaments/ids?tournament_url=${encodeURIComponent(url)}`
   );
