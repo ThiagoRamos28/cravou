@@ -93,6 +93,15 @@ export default function RegrasPage() {
             do início do jogo. Após esse prazo, o palpite fica bloqueado.
           </p>
         </div>
+
+        <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-5 text-sm text-muted-foreground">
+          <p className="mb-1 font-semibold text-foreground">Jogos com prorrogação</p>
+          <p>
+            Na fase de mata-mata, a pontuação considera apenas o placar dos{" "}
+            <strong>90 minutos</strong> (tempo normal). Gols marcados na
+            prorrogação não contam para o palpite.
+          </p>
+        </div>
       </main>
       <SiteFooter />
     </div>

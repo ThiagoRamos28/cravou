@@ -12,6 +12,11 @@ automaticamente e um ranking acumulado é atualizado.
 - **Spec/PRD:** [docs/superpowers/specs/2026-06-24-bolao-copa-design.md](docs/superpowers/specs/2026-06-24-bolao-copa-design.md)
 - **Planos por fase:** [docs/superpowers/plans/](docs/superpowers/plans/)
 
+> ⚠️ **Planos e specs sempre dentro do projeto.** Ao usar plan mode ou `superpowers:writing-plans`,
+> salve o arquivo em `docs/superpowers/specs/AAAA-MM-DD-<slug>.md` (specs/designs) ou
+> `docs/superpowers/plans/AAAA-MM-DD-<slug>.md` (planos de implementação). Nunca salve em
+> `~/.claude/plans/` ou fora do repositório.
+
 ## Stack
 
 - **Next.js 16** (App Router) + TypeScript — ⚠️ veja `AGENTS.md`: esta versão tem breaking
@@ -96,3 +101,4 @@ Ao finalizar uma branch/feature com `superpowers:finishing-a-development-branch`
 - Pontuação: placar exato = 10 pts; só o resultado (V/E/D) = 5 pts; erro = 0 (configurável em `app_config`).
 - Corte do palpite: editável até `inicio_em − minutos_corte` (default 10 min), validado no servidor.
 - Resultados: sync automática da API-Football (cron) como principal; admin corrige placar manualmente como fallback.
+- **Fase mata-mata (jogos com possível prorrogação):** a pontuação sempre considera o placar dos **90 minutos** (tempo normal), desconsiderando gols da prorrogação. A sincronização automática (FlashScore API) não distingue tempo normal de prorrogação no placar retornado — jogos que forem à prorrogação exigem correção manual do placar (via `placar_manual`) para refletir só o resultado dos 90 minutos.
