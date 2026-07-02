@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Lock, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { ScoreStepper } from "@/components/ui/score-stepper";
 import { salvarPalpite, type EstadoPalpite } from "@/app/jogos/actions";
 import { palpiteAberto } from "@/lib/palpites/corte";
 import { CompartilharModal } from "@/components/palpites/compartilhar-modal";
@@ -153,28 +154,18 @@ export function PalpiteForm({
           <input type="hidden" name="time_casa" value={match.time_casa} />
           <input type="hidden" name="time_fora" value={match.time_fora} />
           <span className="text-xs text-muted-foreground">Seu palpite:</span>
-          <label className="sr-only" htmlFor={`casa-${match.id}`}>
-            Palpite {match.time_casa}
-          </label>
-          <input
+          <ScoreStepper
             id={`casa-${match.id}`}
             name="palpite_casa"
-            type="number"
-            min={0}
-            defaultValue={palpite?.palpite_casa ?? ""}
-            className="h-9 w-14 rounded-lg border border-border bg-background px-2 text-center"
+            label={`Palpite ${match.time_casa}`}
+            defaultValue={palpite?.palpite_casa}
           />
           <span className="text-muted-foreground">×</span>
-          <label className="sr-only" htmlFor={`fora-${match.id}`}>
-            Palpite {match.time_fora}
-          </label>
-          <input
+          <ScoreStepper
             id={`fora-${match.id}`}
             name="palpite_fora"
-            type="number"
-            min={0}
-            defaultValue={palpite?.palpite_fora ?? ""}
-            className="h-9 w-14 rounded-lg border border-border bg-background px-2 text-center"
+            label={`Palpite ${match.time_fora}`}
+            defaultValue={palpite?.palpite_fora}
           />
           <Button type="submit" variant="primary" size="sm" disabled={pending}>
             {pending ? "Salvando..." : "Salvar"}

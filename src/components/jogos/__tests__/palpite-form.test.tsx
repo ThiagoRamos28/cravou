@@ -44,14 +44,15 @@ describe("PalpiteForm", () => {
   it("mostra inputs habilitados quando o corte está aberto", () => {
     const futuro: Match = { ...base, inicio_em: "2999-01-01T00:00:00.000Z" };
     render(<PalpiteForm match={futuro} minutosCorte={10} />);
-    expect(screen.getByLabelText(/palpite brasil/i)).not.toBeDisabled();
+    expect(screen.getByRole("textbox", { name: /palpite brasil/i })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: /salvar/i })).toBeInTheDocument();
   });
 
   it("desabilita e avisa quando o corte passou", () => {
     const passado: Match = { ...base, inicio_em: "2000-01-01T00:00:00.000Z" };
     render(<PalpiteForm match={passado} minutosCorte={10} />);
-    expect(screen.getByLabelText(/palpite brasil/i)).toBeDisabled();
+    const input = document.querySelector('#casa-m1') as HTMLInputElement;
+    expect(input).toBeDisabled();
     expect(screen.getByText(/encerrad/i)).toBeInTheDocument();
   });
 
@@ -64,8 +65,8 @@ describe("PalpiteForm", () => {
         palpite={{ id: "p1", match_id: "m1", palpite_casa: 2, palpite_fora: 1, pontos: null }}
       />
     );
-    expect((screen.getByLabelText(/palpite brasil/i) as HTMLInputElement).value).toBe("2");
-    expect((screen.getByLabelText(/palpite argentina/i) as HTMLInputElement).value).toBe("1");
+    expect((screen.getByRole("textbox", { name: /palpite brasil/i }) as HTMLInputElement).value).toBe("2");
+    expect((screen.getByRole("textbox", { name: /palpite argentina/i }) as HTMLInputElement).value).toBe("1");
   });
 
   it("mostra os pontos ganhos num jogo finalizado", () => {
@@ -120,7 +121,8 @@ describe("PalpiteForm", () => {
     );
     expect(screen.getByText(/encerrad/i)).toBeInTheDocument();
     expect(screen.getByText(/1 × 2/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/palpite brasil/i)).toBeDisabled();
+    const input = document.querySelector('#casa-m1') as HTMLInputElement;
+    expect(input).toBeDisabled();
   });
 
   it("chama toast de sucesso quando estado.ok está presente", () => {
