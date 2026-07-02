@@ -3,6 +3,7 @@ import { Trophy } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { buttonVariants } from "@/components/ui/button";
 import { UserMenu } from "@/components/auth/user-menu";
+import { NavLink } from "@/components/nav-link";
 import { getPerfil } from "@/lib/auth/profile";
 import { avatarPadrao } from "@/lib/avatars";
 
@@ -28,43 +29,13 @@ export async function SiteHeader() {
         <div className="flex items-center gap-4 sm:gap-6">
           <HeaderBrand />
           {perfil && (
-            <nav className="flex items-center gap-0.5 sm:gap-1">
-              <Link
-                href="/pessoas"
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                Pessoas
-              </Link>
-              <Link
-                href="/feed"
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                Feed
-              </Link>
-              <Link
-                href="/jogos"
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                Jogos
-              </Link>
-              <Link
-                href="/ranking"
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                Ranking
-              </Link>
-              <Link
-                href="/historico"
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                Histórico
-              </Link>
-              <Link
-                href="/regras"
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                Regras
-              </Link>
+            <nav className="hidden items-center gap-0.5 sm:flex sm:gap-1">
+              <NavLink href="/pessoas">Pessoas</NavLink>
+              <NavLink href="/feed">Feed</NavLink>
+              <NavLink href="/jogos">Jogos</NavLink>
+              <NavLink href="/ranking">Ranking</NavLink>
+              <NavLink href="/historico">Histórico</NavLink>
+              <NavLink href="/regras">Regras</NavLink>
             </nav>
           )}
         </div>

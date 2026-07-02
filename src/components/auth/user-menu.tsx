@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronDown, LogOut, User } from "lucide-react";
+import { ChevronDown, LogOut, User, History, BookOpen } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 export function UserMenu({
@@ -75,6 +75,24 @@ export function UserMenu({
               >
                 <User className="h-4 w-4" aria-hidden="true" />
                 Editar perfil
+              </Link>
+              <Link
+                href="/historico"
+                role="menuitem"
+                onClick={() => setAberto(false)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted"
+              >
+                <History className="h-4 w-4" aria-hidden="true" />
+                Histórico
+              </Link>
+              <Link
+                href="/regras"
+                role="menuitem"
+                onClick={() => setAberto(false)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted"
+              >
+                <BookOpen className="h-4 w-4" aria-hidden="true" />
+                Regras
               </Link>
               <div className="my-1 border-t border-border" />
               <form action="/auth/sair" method="post">
