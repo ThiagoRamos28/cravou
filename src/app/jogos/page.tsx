@@ -7,7 +7,6 @@ import { NovidadesModal } from "@/components/novidades-modal";
 import { getSessao } from "@/lib/auth/profile";
 import { listarJogos } from "@/lib/matches";
 import { listarMeusPalpites, getMinutosCorte } from "@/lib/predictions";
-import { palpiteAberto } from "@/lib/palpites/corte";
 
 export default async function JogosPage({
   searchParams,
@@ -32,16 +31,6 @@ export default async function JogosPage({
     listarMeusPalpites(),
   ]);
 
-  const agora = Date.now();
-  const jogosAbertosCount = soAbertosAtivo
-    ? jogos.length
-    : jogos.filter(
-        (j) =>
-          j.status !== "finalizado" &&
-          (j.status === "ao_vivo" ||
-            palpiteAberto(j.inicio_em, minutosCorte) ||
-            new Date(j.inicio_em).getTime() <= agora)
-      ).length;
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
@@ -51,11 +40,7 @@ export default async function JogosPage({
         <h1 className="mb-6 font-display text-3xl font-bold uppercase tracking-tight">
           Jogos da Copa
         </h1>
-        <JogosFiltro
-          soAbertos={soAbertosAtivo}
-          soEncerrados={soEncerradosAtivo}
-          jogosAbertosCount={jogosAbertosCount}
-        />
+        <JogosFiltro soAbertos={soAbertosAtivo} soEncerrados={soEncerradosAtivo} />
         {jogos.length === 0 ? (
           <p className="text-muted-foreground">
             {soAbertosAtivo

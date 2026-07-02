@@ -32,14 +32,11 @@ describe("JogosFiltro", () => {
     );
   });
 
-  it("exibe badge de contagem quando há jogos abertos", () => {
-    render(<JogosFiltro jogosAbertosCount={3} />);
-    expect(screen.getByText("3")).toBeInTheDocument();
-  });
-
-  it("oculta o badge quando soAbertos está ativo", () => {
-    render(<JogosFiltro soAbertos jogosAbertosCount={3} />);
-    expect(screen.queryByText("3")).not.toBeInTheDocument();
+  it("não exibe badge nem destaque quando 'Abertos' está inativo", () => {
+    render(<JogosFiltro />);
+    const abertos = screen.getByRole("button", { name: /abertos/i });
+    expect(abertos.textContent).toBe("Abertos");
+    expect(abertos.className).not.toMatch(/accent/);
   });
 
   it("volta ao default (abertos) ao clicar em 'Abertos' quando inativo", async () => {
