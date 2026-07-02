@@ -180,30 +180,39 @@ Deno.serve(async (req) => {
     return !ex || ex.status !== "finalizado";
   });
 
-  await Promise.all(
-    transicoes.map(async (r) => {
-      try {
-        const detalhes = await fsGetDetails(r.api_fixture_id);
-        const calculado = placar90Min(detalhes);
-        r.placar_casa = calculado.placar_casa;
-        r.placar_fora = calculado.placar_fora;
-        r.decisao = calculado.decisao;
-        r.placar_penaltis_casa = calculado.placar_penaltis_casa;
-        r.placar_penaltis_fora = calculado.placar_penaltis_fora;
-        if (r.fase === "mata-mata" && detalhes.tournament?.name) {
-          r.rodada = rodadaFromTournamentName(detalhes.tournament.name);
+  // Processa em lotes pequenos (evita estourar rate limit da RapidAPI quando
+  // muitos jogos viram "finalizado" de uma vez, ex.: 1ª sincronização do mata-mata)
+  const TAMANHO_LOTE = 5;
+  for (let i = 0; i < transicoes.length; i += TAMANHO_LOTE) {
+    const lote = transicoes.slice(i, i + TAMANHO_LOTE);
+    await Promise.all(
+      lote.map(async (r) => {
+        try {
+          const detalhes = await fsGetDetails(r.api_fixture_id);
+          const calculado = placar90Min(detalhes);
+          r.placar_casa = calculado.placar_casa;
+          r.placar_fora = calculado.placar_fora;
+          r.decisao = calculado.decisao;
+          r.placar_penaltis_casa = calculado.placar_penaltis_casa;
+          r.placar_penaltis_fora = calculado.placar_penaltis_fora;
+          if (r.fase === "mata-mata" && detalhes.tournament?.name) {
+            r.rodada = rodadaFromTournamentName(detalhes.tournament.name);
+          }
+        } catch (e) {
+          console.error(
+            JSON.stringify({
+              evento: "match_details_erro",
+              api_fixture_id: r.api_fixture_id,
+              mensagem: e instanceof Error ? e.message : String(e),
+            })
+          );
         }
-      } catch (e) {
-        console.error(
-          JSON.stringify({
-            evento: "match_details_erro",
-            api_fixture_id: r.api_fixture_id,
-            mensagem: e instanceof Error ? e.message : String(e),
-          })
-        );
-      }
-    })
-  );
+      })
+    );
+    if (i + TAMANHO_LOTE < transicoes.length) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
 
   if (paraUpsert.length > 0) {
     const comTimestamp = paraUpsert.map((r) => ({ ...r, atualizado_em: new Date().toISOString() }));
