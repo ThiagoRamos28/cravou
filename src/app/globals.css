@@ -78,3 +78,10 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Reserva espaço para a bottom nav mobile (só quando ela está presente) */
+@media (max-width: 639px) {
+  body:has(nav[data-bottom-nav]) {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+  }
+}

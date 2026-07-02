@@ -6,6 +6,7 @@ import { UserMenu } from "@/components/auth/user-menu";
 import { NavLink } from "@/components/nav-link";
 import { getPerfil } from "@/lib/auth/profile";
 import { avatarPadrao } from "@/lib/avatars";
+import { BottomNav } from "@/components/bottom-nav";
 
 export function HeaderBrand() {
   return (
@@ -24,35 +25,38 @@ export async function SiteHeader() {
   const perfil = await getPerfil();
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <div className="flex items-center gap-4 sm:gap-6">
-          <HeaderBrand />
-          {perfil && (
-            <nav className="hidden items-center gap-0.5 sm:flex sm:gap-1">
-              <NavLink href="/pessoas">Pessoas</NavLink>
-              <NavLink href="/feed">Feed</NavLink>
-              <NavLink href="/jogos">Jogos</NavLink>
-              <NavLink href="/ranking">Ranking</NavLink>
-              <NavLink href="/historico">Histórico</NavLink>
-              <NavLink href="/regras">Regras</NavLink>
-            </nav>
-          )}
+    <>
+      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-4 sm:gap-6">
+            <HeaderBrand />
+            {perfil && (
+              <nav className="hidden items-center gap-0.5 sm:flex sm:gap-1">
+                <NavLink href="/pessoas">Pessoas</NavLink>
+                <NavLink href="/feed">Feed</NavLink>
+                <NavLink href="/jogos">Jogos</NavLink>
+                <NavLink href="/ranking">Ranking</NavLink>
+                <NavLink href="/historico">Histórico</NavLink>
+                <NavLink href="/regras">Regras</NavLink>
+              </nav>
+            )}
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <ThemeToggle />
+            {perfil ? (
+              <UserMenu
+                apelido={perfil.apelido ?? "Você"}
+                avatarUrl={perfil.avatar_url ?? avatarPadrao(perfil.id)}
+              />
+            ) : (
+              <Link href="/entrar" className={buttonVariants("primary", "sm")}>
+                Entrar
+              </Link>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <ThemeToggle />
-          {perfil ? (
-            <UserMenu
-              apelido={perfil.apelido ?? "Você"}
-              avatarUrl={perfil.avatar_url ?? avatarPadrao(perfil.id)}
-            />
-          ) : (
-            <Link href="/entrar" className={buttonVariants("primary", "sm")}>
-              Entrar
-            </Link>
-          )}
-        </div>
-      </div>
-    </header>
+      </header>
+      {perfil && <BottomNav />}
+    </>
   );
 }
