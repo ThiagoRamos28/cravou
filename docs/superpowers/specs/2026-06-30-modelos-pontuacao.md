@@ -138,6 +138,31 @@ Se a prioridade for velocidade de entrega, o **Modelo A** é implementado em min
 
 ---
 
+## ✅ Decisão (2026-07-02)
+
+**Modelo A escolhido**, com uma alteração em relação ao proposto: **sem recálculo retroativo**.
+Os novos valores (15/7/4/1) valem apenas para jogos finalizados a partir da mudança,
+programada para **2026-07-04**; o histórico dos grupos mantém a pontuação 10/7/5/2.
+
+**Execução:** a alteração NÃO pode ser feita via `/admin/config` (a tela dispara
+`recalcular_todos()` automaticamente, reescrevendo o histórico). Deve ser feita via SQL
+direto no banco:
+
+```sql
+update app_config set valor = '15' where chave = 'pts_placar_exato';
+update app_config set valor = '7'  where chave = 'pts_saldo';
+update app_config set valor = '4'  where chave = 'pts_resultado';
+update app_config set valor = '1'  where chave = 'pts_gols_time';
+```
+
+Isso é seguro porque os pontos ficam gravados por palpite e só são recalculados pelo
+trigger por partida (na finalização) ou por `recalcular_todos()`. Cuidados permanentes:
+
+- Nunca alterar `pts_*` pela tela `/admin/config` (recalcularia tudo retroativamente).
+- Corrigir placar de jogo antigo após a virada repontua aquele jogo com os valores novos.
+- Atualizar `/regras` e a tabela de pontos do ranking (que exibem valores fixos) para
+  refletir os dois períodos.
+
 ## Próximos Passos (pós-decisão)
 
 1. Escolher o modelo
