@@ -148,25 +148,27 @@ export function PalpiteForm({
         exit={{ opacity: reduce ? 1 : 0 }}
         transition={{ duration: reduce ? 0 : 0.2 }}
       >
-        <form action={formAction} className="flex flex-wrap items-center justify-center gap-2">
+        <form action={formAction} className="flex flex-col items-center gap-2">
           <input type="hidden" name="match_id" value={match.id} />
           <input type="hidden" name="inicio_em" value={match.inicio_em} />
           <input type="hidden" name="time_casa" value={match.time_casa} />
           <input type="hidden" name="time_fora" value={match.time_fora} />
           <span className="text-xs text-muted-foreground">Seu palpite:</span>
-          <ScoreStepper
-            id={`casa-${match.id}`}
-            name="palpite_casa"
-            label={`Palpite ${match.time_casa}`}
-            defaultValue={palpite?.palpite_casa}
-          />
-          <span className="text-muted-foreground">×</span>
-          <ScoreStepper
-            id={`fora-${match.id}`}
-            name="palpite_fora"
-            label={`Palpite ${match.time_fora}`}
-            defaultValue={palpite?.palpite_fora}
-          />
+          <div className="flex items-center gap-2">
+            <ScoreStepper
+              id={`casa-${match.id}`}
+              name="palpite_casa"
+              label={`Palpite ${match.time_casa}`}
+              defaultValue={palpite?.palpite_casa}
+            />
+            <span className="text-muted-foreground">×</span>
+            <ScoreStepper
+              id={`fora-${match.id}`}
+              name="palpite_fora"
+              label={`Palpite ${match.time_fora}`}
+              defaultValue={palpite?.palpite_fora}
+            />
+          </div>
           <Button type="submit" variant="primary" size="sm" disabled={pending}>
             {pending ? "Salvando..." : "Salvar"}
           </Button>
