@@ -3,6 +3,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Podium } from "@/components/ranking/podium";
 import { RankingTable } from "@/components/ranking/ranking-table";
+import { RankingListaMobile } from "@/components/ranking/ranking-lista-mobile";
 import { getSessao } from "@/lib/auth/profile";
 import { listarRanking } from "@/lib/ranking";
 
@@ -21,6 +22,7 @@ export default async function RankingPage() {
         </h1>
         <Podium linhas={linhas} />
         <RankingTable linhas={linhas} meuId={sessao.userId} />
+        <RankingListaMobile linhas={linhas} meuId={sessao.userId} />
       </main>
       <SiteFooter />
     </div>
