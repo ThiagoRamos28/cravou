@@ -84,6 +84,11 @@ type TournamentIds = {
 const CACHE_STAGES_KEY = "tournament_stages";
 const CACHE_STAGES_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
+// /tournaments/ids retorna ~19 stages, mas só interessam os da Copa 2026: grupos ("Main")
+// e mata-mata ("Play Offs"). Os demais (First/Second/Third stage, Promotion, etc.) são de
+// outras competições — ingeri-los polui `matches` e desperdiça chamadas à API.
+const STAGES_RELEVANTES = new Set(["Main", "Play Offs"]);
+
 async function descobrirStages(
   supabase: ReturnType<typeof createClient>
 ): Promise<TournamentIds> {
@@ -190,7 +195,10 @@ Deno.serve(async (req) => {
     const ids = await descobrirStages(supabase);
     const porId = new Map<string, MatchRow>();
 
-    for (const stage of ids.tournament_stages) {
+    const stagesRelevantes = ids.tournament_stages.filter((s) =>
+      STAGES_RELEVANTES.has(s.name)
+    );
+    for (const stage of stagesRelevantes) {
       const fase = stage.name === "Main" ? "grupos" : "mata-mata";
       const [fixtures, results] = await Promise.all([
         fsGetLista("fixtures", ids.tournament_template_id, ids.season_id, stage.tournament_stage_id),
