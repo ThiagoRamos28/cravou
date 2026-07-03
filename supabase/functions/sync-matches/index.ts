@@ -3,6 +3,7 @@ import {
   fixtureToRow,
   resultToRow,
   placar90Min,
+  resgateDeDetalhes,
   rodadaFromTournamentName,
   type MatchRow,
   type FsMatchDetails,
@@ -381,6 +382,92 @@ Deno.serve(async (req) => {
       if (auditError) {
         console.error(JSON.stringify({ evento: "audit_log_erro", mensagem: auditError.message }));
       }
+    }
+  }
+
+  // ── Resgate ativo de jogos "no limbo" ────────────────────────────────────────────────
+  // A lista `results` do torneio atrasa horas para incluir um jogo recém-encerrado. Nesse
+  // intervalo o jogo já saiu de `fixtures` mas ainda não entrou em `results` — fica invisível
+  // para o fluxo normal e o placar nunca atualiza sozinho. Aqui pegamos os `agendado` cujo
+  // horário já passou e que NÃO vieram em nenhuma das listas, e consultamos `matches/details`
+  // diretamente (fonte que já tem o resultado na hora).
+  const idsNasListas = new Set(rows.map((r) => r.api_fixture_id));
+  const RESGATE_APOS_MS = 100 * 60 * 1000; // ~100min após o início: 90min + intervalo + folga
+  const limiteResgate = new Date(agora - RESGATE_APOS_MS).toISOString();
+
+  const { data: candidatos } = await supabase
+    .from("matches")
+    .select("id, api_fixture_id, placar_casa, placar_fora, time_casa, time_fora, fase")
+    .eq("status", "agendado")
+    .eq("placar_manual", false)
+    .lt("inicio_em", limiteResgate)
+    .order("inicio_em", { ascending: true });
+
+  const paraResgatar = (candidatos ?? []).filter(
+    (c) => !idsNasListas.has(c.api_fixture_id as string)
+  );
+
+  const LOTE_RESGATE = 5;
+  for (let i = 0; i < paraResgatar.length; i += LOTE_RESGATE) {
+    const lote = paraResgatar.slice(i, i + LOTE_RESGATE);
+    await Promise.all(
+      lote.map(async (c) => {
+        try {
+          const detalhes = await fsGetDetails(c.api_fixture_id as string);
+          const resgate = resgateDeDetalhes(detalhes);
+          if (!resgate) return; // ainda não terminou
+
+          const rodada =
+            c.fase === "mata-mata" && detalhes.tournament?.name
+              ? rodadaFromTournamentName(detalhes.tournament.name)
+              : undefined;
+
+          const { error: upErr } = await supabase
+            .from("matches")
+            .update({
+              status: "finalizado",
+              placar_casa: resgate.placar_casa,
+              placar_fora: resgate.placar_fora,
+              decisao: resgate.decisao,
+              placar_penaltis_casa: resgate.placar_penaltis_casa,
+              placar_penaltis_fora: resgate.placar_penaltis_fora,
+              ...(rodada !== undefined ? { rodada } : {}),
+              atualizado_em: new Date().toISOString(),
+            })
+            .eq("id", c.id as string);
+          if (upErr) {
+            console.error(
+              JSON.stringify({ evento: "resgate_upsert_erro", api_fixture_id: c.api_fixture_id, mensagem: upErr.message })
+            );
+            return;
+          }
+
+          await supabase.from("audit_log").insert({
+            user_id: null,
+            acao: "sync_placar_resgate",
+            tabela: "matches",
+            registro_id: c.id,
+            dados_anteriores: { placar_casa: c.placar_casa, placar_fora: c.placar_fora },
+            dados_novos: {
+              placar_casa: resgate.placar_casa,
+              placar_fora: resgate.placar_fora,
+              time_casa: c.time_casa,
+              time_fora: c.time_fora,
+            },
+          });
+        } catch (e) {
+          console.error(
+            JSON.stringify({
+              evento: "resgate_details_erro",
+              api_fixture_id: c.api_fixture_id,
+              mensagem: e instanceof Error ? e.message : String(e),
+            })
+          );
+        }
+      })
+    );
+    if (i + LOTE_RESGATE < paraResgatar.length) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
 

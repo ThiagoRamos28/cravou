@@ -18,6 +18,7 @@ export type FsResult = FsFixture & {
 export type Decisao = "normal" | "prorrogacao" | "penaltis";
 
 export type FsMatchStatus = {
+  is_finished?: boolean;
   is_finished_after_extra_time: boolean;
   is_finished_after_penalties: boolean;
 };
@@ -124,6 +125,21 @@ export function placar90Min(details: FsMatchDetails): {
     placar_penaltis_casa: decisao === "penaltis" ? s.home_penalties : null,
     placar_penaltis_fora: decisao === "penaltis" ? s.away_penalties : null,
   };
+}
+
+// Resgate ativo: a lista `results` do torneio atrasa horas para incluir um jogo recém-encerrado,
+// mas `matches/details` já sabe o resultado na hora. Para um jogo `agendado` cujo horário já
+// passou, consultamos os detalhes diretamente; se estiver finalizado, devolvemos o placar de
+// 90min pronto para gravar. Retorna null se o jogo ainda não terminou.
+export function resgateDeDetalhes(details: FsMatchDetails): {
+  placar_casa: number;
+  placar_fora: number;
+  decisao: Decisao;
+  placar_penaltis_casa: number | null;
+  placar_penaltis_fora: number | null;
+} | null {
+  if (!details.match_status?.is_finished) return null;
+  return placar90Min(details);
 }
 
 const RODADAS_CONHECIDAS: Record<string, string> = {

@@ -5,6 +5,7 @@ import {
   resultToRow,
   decisaoFromStatus,
   placar90Min,
+  resgateDeDetalhes,
   rodadaFromTournamentName,
   type FsMatchDetails,
 } from "../fixtures";
@@ -161,6 +162,48 @@ describe("placar90Min", () => {
       placar_penaltis_casa: null,
       placar_penaltis_fora: null,
     });
+  });
+});
+
+describe("resgateDeDetalhes", () => {
+  const base = (over: Partial<FsMatchDetails["match_status"]>): FsMatchDetails => ({
+    match_id: "m1",
+    scores: {
+      home: 1,
+      away: 1,
+      home_1st_half: 0,
+      away_1st_half: 1,
+      home_2nd_half: 1,
+      away_2nd_half: 0,
+      home_extra_time: 0,
+      away_extra_time: 0,
+      home_penalties: 2,
+      away_penalties: 4,
+    },
+    match_status: {
+      is_finished: true,
+      is_finished_after_extra_time: false,
+      is_finished_after_penalties: true,
+      ...over,
+    },
+  });
+
+  it("retorna o placar de 90min quando o jogo está finalizado nos detalhes", () => {
+    expect(resgateDeDetalhes(base({}))).toEqual({
+      placar_casa: 1,
+      placar_fora: 1,
+      decisao: "penaltis",
+      placar_penaltis_casa: 2,
+      placar_penaltis_fora: 4,
+    });
+  });
+
+  it("retorna null quando o jogo ainda não está finalizado (em andamento)", () => {
+    expect(
+      resgateDeDetalhes(
+        base({ is_finished: false, is_finished_after_penalties: false })
+      )
+    ).toBeNull();
   });
 });
 
