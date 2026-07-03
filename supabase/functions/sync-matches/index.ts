@@ -22,15 +22,26 @@ function rodadaGrupos(tsSeconds: number): string {
   return "";
 }
 
+// Erro de rate limit (HTTP 429). Não deve ser "retriado" num loop rápido — a quota já
+// estourou; insistir só piora. Aborta a run inteira imediatamente.
+class RateLimitError extends Error {
+  constructor(public readonly path: string) {
+    super(`FlashScore ${path} 429 (rate limit)`);
+    this.name = "RateLimitError";
+  }
+}
+
 async function withRetry<T>(fn: () => Promise<T>, tentativas = 3): Promise<T> {
   let ultimoErro: unknown;
   for (let i = 0; i < tentativas; i++) {
     try {
       return await fn();
     } catch (e) {
+      // 429 não é transitório aqui: aborta sem gastar as demais tentativas.
+      if (e instanceof RateLimitError) throw e;
       ultimoErro = e;
       if (i < tentativas - 1) {
-        await new Promise((r) => setTimeout(r, 100 * Math.pow(2, i)));
+        await new Promise((r) => setTimeout(r, 500 * Math.pow(2, i)));
       }
     }
   }
@@ -52,6 +63,7 @@ async function fsFetch(path: string): Promise<unknown> {
         },
         signal: controller.signal,
       });
+      if (resp.status === 429) throw new RateLimitError(path);
       if (!resp.ok) throw new Error(`FlashScore ${path} ${resp.status}`);
       return await resp.json();
     } finally {
@@ -67,15 +79,43 @@ type TournamentIds = {
   tournament_stages: TournamentStage[];
 };
 
-async function descobrirStages(): Promise<TournamentIds> {
+// IDs/stages do torneio não mudam durante a Copa. Cacheia em sync_cache para não bater em
+// /tournaments/ids toda run (endpoint que estava tomando 429 e derrubando a sync inteira).
+const CACHE_STAGES_KEY = "tournament_stages";
+const CACHE_STAGES_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+async function descobrirStages(
+  supabase: ReturnType<typeof createClient>
+): Promise<TournamentIds> {
+  const { data: cache } = await supabase
+    .from("sync_cache")
+    .select("valor, atualizado_em")
+    .eq("chave", CACHE_STAGES_KEY)
+    .maybeSingle();
+
+  if (cache) {
+    const idade = Date.now() - new Date(cache.atualizado_em as string).getTime();
+    if (idade < CACHE_STAGES_TTL_MS) {
+      return cache.valor as TournamentIds;
+    }
+  }
+
   const url = Deno.env.get("FS_TOURNAMENT_URL");
   if (!url) {
     throw new Error("FS_TOURNAMENT_URL não configurado (secret ausente na Edge Function)");
   }
-  const data = await fsFetch(
+  const data = (await fsFetch(
     `/api/flashscore/v2/tournaments/ids?tournament_url=${encodeURIComponent(url)}`
-  );
-  return data as TournamentIds;
+  )) as TournamentIds;
+
+  await supabase
+    .from("sync_cache")
+    .upsert(
+      { chave: CACHE_STAGES_KEY, valor: data, atualizado_em: new Date().toISOString() },
+      { onConflict: "chave" }
+    );
+
+  return data;
 }
 
 async function fsGetLista(
@@ -105,9 +145,49 @@ Deno.serve(async (req) => {
     });
   }
 
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  // Janela de jogo: só faz sentido bater na API quando há jogo relevante — algum começando
+  // em breve, em andamento, ou já vencido mas ainda sem placar (`agendado` que já passou).
+  // Fora disso, pula a run (economiza a maior parte das ~96 runs/dia e poupa a quota da API).
+  const agora = Date.now();
+  const JANELA_ANTES_MS = 2 * 60 * 60 * 1000; // 2h antes do início
+  const JANELA_DEPOIS_MS = 4 * 60 * 60 * 1000; // até 4h depois (cobre prorrogação/atrasos)
+  const inicioMin = new Date(agora - JANELA_DEPOIS_MS).toISOString();
+  const inicioMax = new Date(agora + JANELA_ANTES_MS).toISOString();
+
+  const { data: naJanela } = await supabase
+    .from("matches")
+    .select("id")
+    .eq("status", "agendado")
+    .gte("inicio_em", inicioMin)
+    .lte("inicio_em", inicioMax)
+    .limit(1);
+
+  const { data: vencidos } = await supabase
+    .from("matches")
+    .select("id")
+    .eq("status", "agendado")
+    .lt("inicio_em", inicioMin)
+    .limit(1);
+
+  const temJogo = (naJanela?.length ?? 0) > 0;
+  // `vencidos` (agendados que já começaram há mais de 4h e continuam sem placar) força a run
+  // mesmo fora da janela, para recuperar jogos que a API demorou a mover para "results".
+  const temPendente = (vencidos?.length ?? 0) > 0;
+
+  if (!temJogo && !temPendente) {
+    return new Response(JSON.stringify({ ok: true, pulado: "sem jogo na janela" }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   let rows: MatchRow[];
   try {
-    const ids = await descobrirStages();
+    const ids = await descobrirStages(supabase);
     const porId = new Map<string, MatchRow>();
 
     for (const stage of ids.tournament_stages) {
@@ -129,6 +209,14 @@ Deno.serve(async (req) => {
     }
     rows = [...porId.values()];
   } catch (e) {
+    // Rate limit: não é falha de código nem transitória. Loga como aviso e responde 200 para
+    // o cron não reenfileirar/acumular erro; a próxima janela tenta de novo.
+    if (e instanceof RateLimitError) {
+      console.warn(JSON.stringify({ evento: "rate_limit", path: e.path }));
+      return new Response(JSON.stringify({ ok: false, motivo: "429", path: e.path }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     const erro = {
       mensagem: e instanceof Error ? e.message : String(e),
       stack: e instanceof Error ? e.stack : undefined,
@@ -139,11 +227,6 @@ Deno.serve(async (req) => {
       headers: { "Content-Type": "application/json" },
     });
   }
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
 
   const { data: manuais } = await supabase
     .from("matches")
