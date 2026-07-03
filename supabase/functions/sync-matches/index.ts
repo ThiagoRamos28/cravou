@@ -89,6 +89,11 @@ const CACHE_STAGES_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 // outras competições — ingeri-los polui `matches` e desperdiça chamadas à API.
 const STAGES_RELEVANTES = new Set(["Main", "Play Offs"]);
 
+// Refresh periódico: mesmo sem jogo na janela, roda a sync a cada 12h para ingerir jogos
+// recém-cadastrados na API (ex.: fixtures da próxima fase do mata-mata em dias de folga).
+const REFRESH_KEY = "ultimo_refresh";
+const REFRESH_INTERVALO_MS = 12 * 60 * 60 * 1000; // 12h
+
 async function descobrirStages(
   supabase: ReturnType<typeof createClient>
 ): Promise<TournamentIds> {
@@ -184,7 +189,18 @@ Deno.serve(async (req) => {
   // mesmo fora da janela, para recuperar jogos que a API demorou a mover para "results".
   const temPendente = (vencidos?.length ?? 0) > 0;
 
-  if (!temJogo && !temPendente) {
+  // Refresh periódico: força a run se o último refresh completo foi há mais de 12h, para
+  // ingerir jogos novos mesmo em dias sem partida na janela.
+  const { data: refreshCache } = await supabase
+    .from("sync_cache")
+    .select("atualizado_em")
+    .eq("chave", REFRESH_KEY)
+    .maybeSingle();
+  const deveRefrescar =
+    !refreshCache ||
+    agora - new Date(refreshCache.atualizado_em as string).getTime() > REFRESH_INTERVALO_MS;
+
+  if (!temJogo && !temPendente && !deveRefrescar) {
     return new Response(JSON.stringify({ ok: true, pulado: "sem jogo na janela" }), {
       headers: { "Content-Type": "application/json" },
     });
@@ -367,6 +383,14 @@ Deno.serve(async (req) => {
       }
     }
   }
+
+  // Marca o refresh completo (só no caminho de sucesso — 429/erro não chegam aqui).
+  await supabase
+    .from("sync_cache")
+    .upsert(
+      { chave: REFRESH_KEY, valor: {}, atualizado_em: new Date().toISOString() },
+      { onConflict: "chave" }
+    );
 
   return new Response(
     JSON.stringify({
