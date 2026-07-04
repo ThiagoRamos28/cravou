@@ -5,7 +5,7 @@ import { SiteFooter } from "@/components/site-footer";
 const NIVEIS = [
   {
     icon: <Target className="h-6 w-6 text-accent" />,
-    pts: 10,
+    pts: 15,
     titulo: "Cravou!",
     descricao:
       "Você acertou o placar exato — tanto os gols do time da casa quanto os do visitante. É a pontuação máxima.",
@@ -21,7 +21,7 @@ const NIVEIS = [
   },
   {
     icon: <Trophy className="h-6 w-6 text-yellow-500" />,
-    pts: 5,
+    pts: 4,
     titulo: "Vencedor",
     descricao:
       "Você acertou quem ganhou (ou que seria empate), mas errou o saldo de gols.",
@@ -29,7 +29,7 @@ const NIVEIS = [
   },
   {
     icon: <CircleDot className="h-6 w-6 text-muted-foreground" />,
-    pts: 2,
+    pts: 1,
     titulo: "Gols parciais",
     descricao:
       "Você errou o resultado, mas acertou exatamente os gols de um dos times.",
@@ -55,7 +55,10 @@ export default function RegrasPage() {
         <p className="mb-10 text-muted-foreground">
           Cada palpite recebe os pontos da categoria mais alta que ele acertar.
           Os níveis são avaliados de cima para baixo — o primeiro que casar é o
-          que vale.
+          que vale. Os valores abaixo são os da{" "}
+          <strong className="text-foreground">Temporada 2 — Mata-mata</strong>{" "}
+          (jogos a partir de 04/07/2026); veja a nota mais abaixo para os
+          valores da fase de grupos.
         </p>
 
         <ol className="flex flex-col gap-4">
@@ -91,6 +94,27 @@ export default function RegrasPage() {
           <p>
             Você pode alterar seu palpite até <strong>10 minutos antes</strong>{" "}
             do início do jogo. Após esse prazo, o palpite fica bloqueado.
+          </p>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-5 text-sm text-muted-foreground">
+          <p className="mb-1 font-semibold text-foreground">
+            Mudança de pontuação em 04/07/2026
+          </p>
+          <p>
+            Os valores de pontos acima valem para a{" "}
+            <strong>Temporada 2 — Mata-mata</strong> (jogos a partir de
+            04/07/2026): placar exato 15 pts · vencedor e saldo 7 pts ·
+            resultado (V/E/D) 4 pts · gols de um time 1 pt.
+          </p>
+          <p className="mt-2">
+            Na <strong>Temporada 1 — Fase de grupos</strong> (jogos até
+            03/07/2026), os valores eram: placar exato 10 pts · vencedor e
+            saldo 7 pts · resultado (V/E/D) 5 pts · gols de um time 2 pts.
+          </p>
+          <p className="mt-2">
+            Os pontos já conquistados na fase de grupos permanecem como
+            estão — não há recálculo retroativo.
           </p>
         </div>
 
