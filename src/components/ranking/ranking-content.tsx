@@ -40,10 +40,17 @@ export function RankingContent({
     setPeriodo(novoPeriodo);
     periodoAtualRef.current = novoPeriodo;
     setCarregando(true);
-    const resultado = await buscarRanking(novoPeriodo);
-    if (periodoAtualRef.current === novoPeriodo) {
-      setLinhas(resultado);
-      setCarregando(false);
+    try {
+      const resultado = await buscarRanking(novoPeriodo);
+      if (periodoAtualRef.current === novoPeriodo) {
+        setLinhas(resultado);
+      }
+    } catch {
+      // Falha aberta: mantém as linhas anteriores.
+    } finally {
+      if (periodoAtualRef.current === novoPeriodo) {
+        setCarregando(false);
+      }
     }
   }
 

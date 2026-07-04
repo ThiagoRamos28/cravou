@@ -47,6 +47,16 @@ describe("RankingContent", () => {
     });
   });
 
+  it("em erro da action, some o skeleton e mantém as linhas anteriores", async () => {
+    vi.mocked(buscarRanking).mockRejectedValue(new Error("conexão caiu"));
+    render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "temporada_2" } });
+    await waitFor(() => {
+      expect(document.querySelector(".animate-pulse")).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Abacatão").length).toBeGreaterThan(0);
+  });
+
   it("mostra mensagem de estado vazio quando a resposta é vazia", async () => {
     vi.mocked(buscarRanking).mockResolvedValue([]);
     render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" />);
