@@ -6,8 +6,8 @@ import type { RankingPeriodo } from "@/lib/ranking";
 
 const OPCOES: { valor: RankingPeriodo; label: string }[] = [
   { valor: "geral", label: "Ranking Geral" },
-  { valor: "temporada_1", label: "Temporada 1 (Grupos)" },
-  { valor: "temporada_2", label: "Temporada 2 (Mata-mata)" },
+  { valor: "temporada_1", label: "Temporada 1" },
+  { valor: "temporada_2", label: "Temporada 2" },
 ];
 
 export function SeasonSelector({

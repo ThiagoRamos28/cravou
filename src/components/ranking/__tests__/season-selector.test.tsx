@@ -7,8 +7,8 @@ describe("SeasonSelector", () => {
   it("renderiza as 3 opções de período", () => {
     render(<SeasonSelector periodo="geral" onChange={() => {}} />);
     expect(screen.getByRole("option", { name: "Ranking Geral" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Temporada 1 (Grupos)" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Temporada 2 (Mata-mata)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Temporada 1" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Temporada 2" })).toBeInTheDocument();
   });
 
   it("dispara onChange com o valor certo ao trocar o select", () => {
