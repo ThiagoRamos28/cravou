@@ -46,7 +46,7 @@ export function RankingTable({
         <tbody>
           {linhas.map((l, i) => {
             const eu = l.user_id === meuId;
-            const maxPontos = l.palpites_pontuados * 10;
+            const maxPontos = l.pontos_max_total;
             const aproveitamento =
               maxPontos > 0
                 ? `${Math.round((l.pontos / maxPontos) * 100)}%`

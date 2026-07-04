@@ -16,6 +16,7 @@ const linhas: RankingRow[] = [
     erros: 8,
     palpites_pontuados: 22,
     total_palpites: 24,
+    pontos_max_total: 220,
   },
   {
     user_id: "u2",
@@ -29,6 +30,7 @@ const linhas: RankingRow[] = [
     erros: 9,
     palpites_pontuados: 21,
     total_palpites: 24,
+    pontos_max_total: 210,
   },
 ];
 

@@ -12,6 +12,7 @@ export type RankingRow = {
   erros: number;
   palpites_pontuados: number;
   total_palpites: number;
+  pontos_max_total: number;
 };
 
 // Ranking de todos os usuários, já ordenado (pontos desc, cravadas desc).
