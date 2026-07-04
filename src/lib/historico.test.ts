@@ -9,20 +9,42 @@ const m = (id: string): Match => ({
 });
 
 const itens: ItemHistorico[] = [
-  { match: m("1"), palpiteCasa: 2, palpiteFora: 1, pontos: 10 },
-  { match: m("2"), palpiteCasa: 1, palpiteFora: 0, pontos: 5 },
-  { match: m("3"), palpiteCasa: 0, palpiteFora: 0, pontos: 0 },
+  { match: m("1"), palpiteCasa: 2, palpiteFora: 1, pontos: 10, pontosMax: 10 },
+  { match: m("2"), palpiteCasa: 1, palpiteFora: 0, pontos: 5, pontosMax: 10 },
+  { match: m("3"), palpiteCasa: 0, palpiteFora: 0, pontos: 0, pontosMax: 10 },
 ];
 
 describe("resumoHistorico", () => {
   it("soma pontos, conta cravadas e calcula aproveitamento", () => {
-    const r = resumoHistorico(itens, 10);
+    const r = resumoHistorico(itens);
     expect(r.totalPontos).toBe(15);
     expect(r.cravadas).toBe(1);
     expect(r.aproveitamento).toBe(0.5); // 15 / (3*10)
   });
 
   it("aproveitamento 0 quando não há itens", () => {
-    expect(resumoHistorico([], 10)).toEqual({ totalPontos: 0, cravadas: 0, aproveitamento: 0 });
+    expect(resumoHistorico([])).toEqual({ totalPontos: 0, cravadas: 0, aproveitamento: 0 });
+  });
+
+  it("é config-independente: itens com pontos_max diferentes (virada de modelo)", () => {
+    // jogo da fase de grupos, pontuado com ceiling antigo (10), placar cravado
+    const antigo: ItemHistorico = {
+      match: m("4"),
+      palpiteCasa: 2,
+      palpiteFora: 1,
+      pontos: 10,
+      pontosMax: 10,
+    };
+    // jogo pontuado após a virada (ceiling 15), errou tudo
+    const novo: ItemHistorico = {
+      match: { ...m("5"), placar_casa: 3, placar_fora: 0 },
+      palpiteCasa: 0,
+      palpiteFora: 0,
+      pontos: 0,
+      pontosMax: 15,
+    };
+    const r = resumoHistorico([antigo, novo]);
+    expect(r.cravadas).toBe(1);
+    expect(r.aproveitamento).toBe(0.4); // 10 / (10 + 15) = 0.4
   });
 });

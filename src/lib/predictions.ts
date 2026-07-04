@@ -6,6 +6,7 @@ export type Prediction = {
   palpite_casa: number;
   palpite_fora: number;
   pontos: number | null;
+  pontos_max: number | null;
 };
 
 // Mapa por match_id dos palpites do usuário logado. Falha aberta: {} em erro.
@@ -19,7 +20,7 @@ export async function listarMeusPalpites(): Promise<Record<string, Prediction>> 
 
     const { data } = await supabase
       .from("predictions")
-      .select("id, match_id, palpite_casa, palpite_fora, pontos")
+      .select("id, match_id, palpite_casa, palpite_fora, pontos, pontos_max")
       .eq("user_id", user.id);
 
     const mapa: Record<string, Prediction> = {};
@@ -38,21 +39,6 @@ export async function getMinutosCorte(): Promise<number> {
       .from("app_config")
       .select("valor")
       .eq("chave", "minutos_corte")
-      .single();
-    return (data as { valor: number } | null)?.valor ?? 10;
-  } catch {
-    return 10;
-  }
-}
-
-// Lê pts_placar_exato da app_config; default 10 em qualquer falha.
-export async function getPtsPlacarExato(): Promise<number> {
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("app_config")
-      .select("valor")
-      .eq("chave", "pts_placar_exato")
       .single();
     return (data as { valor: number } | null)?.valor ?? 10;
   } catch {

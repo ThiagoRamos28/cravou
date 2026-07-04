@@ -5,14 +5,14 @@ import { Resumo } from "@/components/historico/resumo";
 import { HistoricoItem } from "@/components/historico/historico-item";
 import { getSessao } from "@/lib/auth/profile";
 import { listarJogos } from "@/lib/matches";
-import { listarMeusPalpites, getPtsPlacarExato } from "@/lib/predictions";
+import { listarMeusPalpites } from "@/lib/predictions";
 import { resumoHistorico, type ItemHistorico } from "@/lib/historico";
 
 export default async function HistoricoPage() {
   const sessao = await getSessao();
   if (!sessao) redirect("/entrar");
 
-  const [jogos, palpites, ptsMaximo] = await Promise.all([listarJogos(), listarMeusPalpites(), getPtsPlacarExato()]);
+  const [jogos, palpites] = await Promise.all([listarJogos(), listarMeusPalpites()]);
 
   const itens: ItemHistorico[] = jogos
     .filter((j) => j.status === "finalizado" && palpites[j.id])
@@ -23,11 +23,12 @@ export default async function HistoricoPage() {
         palpiteCasa: p.palpite_casa,
         palpiteFora: p.palpite_fora,
         pontos: p.pontos ?? 0,
+        pontosMax: p.pontos_max ?? 10,
       };
     })
     .sort((a, b) => b.match.inicio_em.localeCompare(a.match.inicio_em));
 
-  const resumo = resumoHistorico(itens, ptsMaximo);
+  const resumo = resumoHistorico(itens);
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
