@@ -15,12 +15,16 @@ export type RankingRow = {
   pontos_max_total: number;
 };
 
+export type RankingPeriodo = "geral" | "temporada_1" | "temporada_2";
+
 // Ranking de todos os usuários, já ordenado (pontos desc, cravadas desc).
 // Lê da função SECURITY DEFINER public.ranking(). Falha aberta: [] em erro.
-export async function listarRanking(): Promise<RankingRow[]> {
+export async function listarRanking(
+  periodo: RankingPeriodo = "geral"
+): Promise<RankingRow[]> {
   try {
     const supabase = await createClient();
-    const { data } = await supabase.rpc("ranking");
+    const { data } = await supabase.rpc("ranking", { p_periodo: periodo });
     return (data as RankingRow[]) ?? [];
   } catch {
     return [];
