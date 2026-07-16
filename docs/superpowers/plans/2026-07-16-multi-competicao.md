@@ -1,41 +1,41 @@
-# Suporte a Múltiplas Competições Implementation Plan
+# Suporte a Múltiplas Competições — Implementation Plan (revisado)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add multi-competition support (Copa do Mundo 2026 archived, Brasileirão 2026 active with separate ranking and opt-in participation).
+**Goal:** Adicionar suporte a múltiplas competições — Copa do Mundo 2026 arquivada (histórico/ranking consultável) e Brasileirão 2026 ativo com ranking próprio zerado e opt-in de participação.
 
-**Architecture:** Introduce `competicoes` table as the source of truth for active tournaments, backfill existing Copa matches, make `app_config` and `ranking()` competition-aware, generalize `sync-matches` to loop over active competitions, and add a competition selector component shared across palpites/historico/ranking/regras pages. User opt-in via `profiles_competicoes` determines ranking visibility per competition.
+**Architecture:** `competicoes` é a fonte de verdade das competições; `matches` ganha `competicao_id` (backfill = Copa). O ranking passa a filtrar por competição via `ranking(p_competicao_id, p_periodo)` e opt-in em `profiles_competicoes`. As páginas continuam **server components** que buscam via helpers em `src/lib/*` — o `competicaoId` é **threaded** por esses helpers, sem reescrever a UI. A competição selecionada persiste em **cookie** (`competicao`), lido no servidor. `app_config`/`recalcular_pontos` **não mudam** (o modelo global por data já dá Modelo A ao Brasileirão). `sync-matches` itera as competições ativas.
 
-**Tech Stack:** Next.js 16 (App Router), TypeScript, Supabase (Postgres + RLS + Edge Functions), Tailwind CSS v4, Framer Motion, TDD for migrations.
+**Tech Stack:** Next.js 16 (App Router, server components), TypeScript, Supabase (Postgres + RLS + Edge Functions/Deno), Tailwind v4, **Vitest** + React Testing Library.
 
 ## Global Constraints
 
-- Idioma UI: português do Brasil, sempre
-- Mensagens de commit: `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
-- Timezone: `America/Sao_Paulo` para exibição ao usuário
-- Modelos pontuação: Modelo A (15/7/4/1) aplicável a ambas competições; mesmas regras de corte (10 min)
-- Nomes fixture: Copa = `'Copa do Mundo 2026'` (format fases), Brasileirão = `'Brasileirão Série A 2026'` (format pontos-corridos)
-- Dark/light theme: todo componente novo deve funcionar em ambos
-- `prefers-reduced-motion`: Framer Motion anima respeitando essa preferência
+- Idioma UI: português do Brasil, sempre. Nome do produto: `Cravou!` verbatim.
+- Test runner: **Vitest** (`vi.fn()`, `import { describe, it, expect, vi } from "vitest"`). NUNCA `jest.fn()`.
+- Testes co-localizados em `__tests__/` ao lado do componente.
+- Timezone exibição: `America/Sao_Paulo`. Corte de temporada Copa: `timestamptz '2026-07-04 00:00:00-03'`.
+- Modelo de pontuação: global por data (não mexer em `app_config`/`recalcular_pontos`/`pontos_palpite`/`palpite_aberto`).
+- Slugs: Copa = `copa-mundo-2026` (formato `fases`, `ativa=false`), Brasileirão = `brasileirao-2026` (formato `pontos-corridos`, `ativa=true`).
+- Páginas são **server components**; não convertê-las para client. Data-access só via `src/lib/*`.
+- Componentes novos: Tailwind, dark E light, `cursor-pointer` em clicáveis, foco visível, ícones lucide (nunca emoji).
+- Commits terminam com `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
+- Branch de trabalho: `feat/multi-competicao` (já criada).
 
 ---
 
-## Task 1: Migration — `competicoes` table, `matches.competicao_id`, seed
+## Task 1: Migration — `competicoes`, `matches.competicao_id`, seed
 
 **Files:**
 - Create: `supabase/migrations/0019_competicoes.sql`
 
 **Interfaces:**
-- Produces: 
-  - `competicoes` table with columns: `id (uuid)`, `slug (text unique)`, `nome (text)`, `formato (text enum: 'fases'/'pontos-corridos')`, `ativa (boolean)`, `fs_tournament_url (text)`, `ordem (int)`, `created_at (timestamptz)`
-  - `matches.competicao_id (uuid)` NOT NULL FK to `competicoes.id`
-  - Two seeded rows: Copa (ativa=false, ordem=1), Brasileirão (ativa=true, ordem=2)
+- Produces: tabela `competicoes(id uuid, slug text unique, nome text, formato text check('fases'|'pontos-corridos'), ativa bool, fs_tournament_url text, ordem int, created_at timestamptz)`; `matches.competicao_id uuid NOT NULL references competicoes(id)`; 2 linhas seed. Copa e Brasileirão IDs resolvíveis por slug.
 
-- [ ] **Step 1: Create migration file**
+- [ ] **Step 1: Criar migration**
 
 ```sql
 -- supabase/migrations/0019_competicoes.sql
--- 0019 — Tabela de competições multi-torneio para Copa + Brasileirão
+-- 0019 — Competições multi-torneio (Copa arquivada + Brasileirão ativo).
 
 create table if not exists public.competicoes (
   id uuid primary key default gen_random_uuid(),
@@ -49,231 +49,66 @@ create table if not exists public.competicoes (
   created_at timestamptz not null default now()
 );
 
--- Seed inicial: Copa (encerrada) e Brasileirão (ativa)
 insert into public.competicoes (slug, nome, formato, ativa, ordem) values
   ('copa-mundo-2026', 'Copa do Mundo 2026', 'fases', false, 1),
-  ('brasileirao-2026', 'Brasileirão Série A 2026', 'pontos-corridos', true, 2);
+  ('brasileirao-2026', 'Brasileirão Série A 2026', 'pontos-corridos', true, 2)
+on conflict (slug) do nothing;
 
--- Adicionar coluna competicao_id em matches
-alter table public.matches add column competicao_id uuid references public.competicoes (id);
+alter table public.matches add column if not exists competicao_id uuid references public.competicoes (id);
 
--- Backfill: todos os jogos existentes são da Copa
-update public.matches 
+update public.matches
 set competicao_id = (select id from public.competicoes where slug = 'copa-mundo-2026')
 where competicao_id is null;
 
--- NOT NULL constraint agora seguro
 alter table public.matches alter column competicao_id set not null;
 
--- Index para queries filtradas por competição
 create index if not exists matches_competicao_id_idx on public.matches (competicao_id);
 
--- RLS: matches já tem policies, não precisa mudar nada (leitura pública para autenticados)
+-- RLS de competicoes: leitura para autenticados, escrita só admin (mesmo padrão de app_config).
+alter table public.competicoes enable row level security;
+
+create policy "competicoes_select_authenticated"
+  on public.competicoes for select
+  to authenticated
+  using (true);
+
+create policy "competicoes_write_admin"
+  on public.competicoes for all
+  to authenticated
+  using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_admin));
 ```
 
-- [ ] **Step 2: Validate migration file path and content**
+- [ ] **Step 2: Verificar arquivo**
 
-Expected: File exists at `supabase/migrations/0019_competicoes.sql` with seed and FK definitions.
-
-```bash
-ls -la supabase/migrations/0019_competicoes.sql
-```
+Run: `ls supabase/migrations/0019_competicoes.sql`
+Expected: arquivo existe.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add supabase/migrations/0019_competicoes.sql
-git commit -m "migration: adicionar tabela competicoes + matches.competicao_id + seed Copa/Brasileirao
+git commit -m "migration: tabela competicoes + matches.competicao_id + seed Copa/Brasileirao
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 2: Migration — `app_config` per-competition, `palpite_aberto()` updated
+## Task 2: Migration — `profiles_competicoes` + opt-in retroativo
 
 **Files:**
-- Create: `supabase/migrations/0020_app_config_por_competicao.sql`
+- Create: `supabase/migrations/0020_profiles_competicoes.sql`
 
 **Interfaces:**
-- Consumes: `competicoes` table with id, slug; `matches` with `competicao_id`
-- Produces: 
-  - `app_config` with composite PK `(competicao_id, chave)` 
-  - `palpite_aberto(match_id)` returns boolean, resolves competition from `matches.competicao_id`
-  - Both Copa and Brasileirão seeded with Modelo A values (15/7/4/1, corte 10 min)
+- Consumes: `competicoes`, `profiles`, `predictions`, `matches.competicao_id` (Task 1)
+- Produces: `profiles_competicoes(user_id, competicao_id, ativo bool, created_at, pk(user_id,competicao_id))` com RLS (dono lê/escreve as próprias linhas). Todo usuário com predictions na Copa recebe linha `ativo=true` na Copa.
 
-- [ ] **Step 1: Create migration**
+- [ ] **Step 1: Criar migration**
 
 ```sql
--- supabase/migrations/0020_app_config_por_competicao.sql
--- 0020 — app_config ganha competicao_id; palpite_aberto respeita config por competição
-
--- Remover constraint atual (chave como PK único)
-alter table public.app_config drop constraint if exists app_config_pkey;
-
--- Adicionar competicao_id
-alter table public.app_config add column competicao_id uuid references public.competicoes (id) on delete cascade;
-
--- Nova PK composta
-alter table public.app_config add primary key (competicao_id, chave);
-
--- Backfill: copiar linhas atuais (sem competicao_id) para a Copa
--- Primeiro, pega a ID da Copa
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'minutos_corte',
-  10
-from public.competicoes c
-where c.slug = 'copa-mundo-2026'
-  and not exists (select 1 from public.app_config where competicao_id = c.id and chave = 'minutos_corte')
-on conflict do nothing;
-
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'pts_placar_exato',
-  15
-from public.competicoes c
-where c.slug = 'copa-mundo-2026'
-  and not exists (select 1 from public.app_config where competicao_id = c.id and chave = 'pts_placar_exato')
-on conflict do nothing;
-
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'pts_resultado',
-  7
-from public.competicoes c
-where c.slug = 'copa-mundo-2026'
-  and not exists (select 1 from public.app_config where competicao_id = c.id and chave = 'pts_resultado')
-on conflict do nothing;
-
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'pts_saldo',
-  4
-from public.competicoes c
-where c.slug = 'copa-mundo-2026'
-  and not exists (select 1 from public.app_config where competicao_id = c.id and chave = 'pts_saldo')
-on conflict do nothing;
-
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'pts_time_marca',
-  1
-from public.competicoes c
-where c.slug = 'copa-mundo-2026'
-  and not exists (select 1 from public.app_config where competicao_id = c.id and chave = 'pts_time_marca')
-on conflict do nothing;
-
--- Agora seed Brasileirão com os mesmos valores
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'minutos_corte',
-  10
-from public.competicoes c
-where c.slug = 'brasileirao-2026'
-on conflict do nothing;
-
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'pts_placar_exato',
-  15
-from public.competicoes c
-where c.slug = 'brasileirao-2026'
-on conflict do nothing;
-
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'pts_resultado',
-  7
-from public.competicoes c
-where c.slug = 'brasileirao-2026'
-on conflict do nothing;
-
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'pts_saldo',
-  4
-from public.competicoes c
-where c.slug = 'brasileirao-2026'
-on conflict do nothing;
-
-insert into public.app_config (competicao_id, chave, valor)
-select 
-  c.id,
-  'pts_time_marca',
-  1
-from public.competicoes c
-where c.slug = 'brasileirao-2026'
-on conflict do nothing;
-
--- Atualizar palpite_aberto(match_id) para resolver competicao a partir do jogo
-drop function if exists public.palpite_aberto(uuid);
-
-create function public.palpite_aberto(p_match_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select now() < m.inicio_em - make_interval(
-    mins => coalesce(
-      (select ac.valor 
-       from public.app_config ac
-       where ac.competicao_id = m.competicao_id 
-         and ac.chave = 'minutos_corte'),
-      10
-    )
-  )
-  from public.matches m
-  where m.id = p_match_id;
-$$;
-
--- RLS não muda: app_config é read-only para autenticados, write-only para admin
-```
-
-- [ ] **Step 2: Verify SQL syntax**
-
-```bash
-cd supabase/migrations && head -50 0020_app_config_por_competicao.sql
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add supabase/migrations/0020_app_config_por_competicao.sql
-git commit -m "migration: app_config por competicao + palpite_aberto atualizado
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-```
-
----
-
-## Task 3: Migration — `profiles_competicoes` opt-in table + retroactive opt-in for Copa participants
-
-**Files:**
-- Create: `supabase/migrations/0021_profiles_competicoes.sql`
-
-**Interfaces:**
-- Consumes: `profiles`, `competicoes`, `predictions`, `matches` with `competicao_id`
-- Produces: 
-  - `profiles_competicoes` table: `(user_id, competicao_id, ativo, created_at)` as PK
-  - Retroactive opt-in: all users with predictions on Copa matches get auto-enrolled with `ativo = true`
-
-- [ ] **Step 1: Create migration**
-
-```sql
--- supabase/migrations/0021_profiles_competicoes.sql
--- 0021 — Tabela profiles_competicoes + opt-in retroativo para participantes da Copa
+-- supabase/migrations/0020_profiles_competicoes.sql
+-- 0020 — Opt-in de participação por competição + opt-in retroativo da Copa.
 
 create table if not exists public.profiles_competicoes (
   user_id uuid not null references public.profiles (id) on delete cascade,
@@ -283,18 +118,14 @@ create table if not exists public.profiles_competicoes (
   primary key (user_id, competicao_id)
 );
 
--- Retroactive opt-in: qualquer usuário com palpites na Copa fica ativo na Copa
+-- Opt-in retroativo: quem já palpitou na Copa continua no ranking da Copa.
 insert into public.profiles_competicoes (user_id, competicao_id, ativo)
-select distinct
-  p.user_id,
-  m.competicao_id,
-  true
+select distinct p.user_id, m.competicao_id, true
 from public.predictions p
 join public.matches m on m.id = p.match_id
 where m.competicao_id = (select id from public.competicoes where slug = 'copa-mundo-2026')
 on conflict (user_id, competicao_id) do nothing;
 
--- RLS: users veem suas próprias linhas
 alter table public.profiles_competicoes enable row level security;
 
 create policy "profiles_competicoes_select_own"
@@ -302,61 +133,52 @@ create policy "profiles_competicoes_select_own"
   to authenticated
   using (auth.uid() = user_id);
 
+create policy "profiles_competicoes_insert_own"
+  on public.profiles_competicoes for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
 create policy "profiles_competicoes_update_own"
   on public.profiles_competicoes for update
   to authenticated
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
-
-create policy "profiles_competicoes_insert_own"
-  on public.profiles_competicoes for insert
-  to authenticated
-  with check (auth.uid() = user_id);
 ```
 
-- [ ] **Step 2: Verify migration**
+- [ ] **Step 2: Verificar arquivo**
 
-```bash
-cd supabase && wc -l migrations/0021_profiles_competicoes.sql
-```
-
-Expected: ~40 lines
+Run: `ls supabase/migrations/0020_profiles_competicoes.sql`
+Expected: existe.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/migrations/0021_profiles_competicoes.sql
-git commit -m "migration: profiles_competicoes com opt-in retroativo para Copa
+git add supabase/migrations/0020_profiles_competicoes.sql
+git commit -m "migration: profiles_competicoes com opt-in retroativo da Copa
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 4: Migration — `ranking(p_competicao_id, p_periodo)` SQL function
+## Task 3: Migration — `ranking(p_competicao_id, p_periodo)`
 
 **Files:**
-- Create: `supabase/migrations/0022_ranking_por_competicao.sql`
+- Create: `supabase/migrations/0021_ranking_por_competicao.sql`
 
 **Interfaces:**
-- Consumes: `profiles`, `profiles_competicoes` (ativo=true), `predictions`, `matches` (competicao_id), `app_config`
-- Produces: 
-  - `ranking(p_competicao_id uuid, p_periodo text = 'geral')` returns table with user_id, apelido, avatar_url, pontos, cravadas, acertos_*, erros, palpites_pontuados, total_palpites, pontos_max_total
-  - Only users with `profiles_competicoes.ativo = true` appear
-  - Filters matches by competicao_id AND periodo (T1 < 2026-07-04, T2 >= 2026-07-04, geral = all)
+- Consumes: `profiles`, `profiles_competicoes` (ativo=true), `predictions`, `matches.competicao_id`
+- Produces: `ranking(p_competicao_id uuid, p_periodo text default 'geral')` retornando as mesmas colunas de hoje (`user_id, apelido, avatar_url, pontos, cravadas, acertos_saldo, acertos_resultado, acertos_gols, erros, palpites_pontuados, total_palpites, pontos_max_total`). Só aparecem usuários com opt-in ativo naquela competição. Substitui a assinatura antiga `ranking(text)`.
 
-- [ ] **Step 1: Write test query (no test framework, but document expected behavior)**
+**Contexto:** a versão atual (migration 0017) é `ranking(p_periodo text)`. Esta troca a assinatura para `(uuid, text)`. O único chamador é `src/lib/ranking.ts` (Task 4), atualizado em conjunto.
 
-In Supabase Studio, after applying previous migrations, we'll verify:
-- `ranking(copa_id, 'geral')` does NOT include Brasileirão matches
-- `ranking(brasileirao_id, 'geral')` does NOT include Copa matches (or returns empty if no matches yet)
-- User without `profiles_competicoes.ativo = true` for a competition does NOT appear in that ranking
-
-- [ ] **Step 2: Create migration**
+- [ ] **Step 1: Criar migration** (baseada na 0017, adicionando join de opt-in + filtro de competição)
 
 ```sql
--- supabase/migrations/0022_ranking_por_competicao.sql
--- 0022 — ranking(p_competicao_id, p_periodo) filtro por competição e período
+-- supabase/migrations/0021_ranking_por_competicao.sql
+-- 0021 — ranking(p_competicao_id, p_periodo): filtra por competição e opt-in ativo.
+-- Substitui ranking(text) da 0017. p_periodo (temporada_1/2) só é relevante para a Copa
+-- (formato 'fases'); Brasileirão sempre chama com 'geral'.
 
 drop function if exists public.ranking(text);
 
@@ -374,12 +196,7 @@ returns table (
   palpites_pontuados bigint,
   total_palpites     bigint,
   pontos_max_total   bigint
-)
-language sql
-stable
-security definer
-set search_path = ''
-as $$
+) language sql stable security definer set search_path = '' as $$
   select
     pr.id,
     pr.apelido,
@@ -434,1219 +251,908 @@ revoke execute on function public.ranking(uuid, text) from public, anon;
 grant execute on function public.ranking(uuid, text) to authenticated;
 ```
 
-- [ ] **Step 3: Validate function signature**
+- [ ] **Step 2: Verificar arquivo**
 
-Expected: `ranking(uuid, text)` with default for second param.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add supabase/migrations/0022_ranking_por_competicao.sql
-git commit -m "migration: ranking(competicao_id, periodo) com filtro por competicao e opt-in
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-```
-
----
-
-## Task 5: Migration — sync cache namespaced per competition
-
-**Files:**
-- Create: `supabase/migrations/0023_sync_cache_competicao.sql`
-
-**Interfaces:**
-- Consumes: `competicoes`
-- Produces: 
-  - `sync_cache` table with added `competicao_id` column
-  - Updated function `sync_cache_exists(competicao_id, cache_key)` to check per-competition cache
-  - Updated function `sync_cache_set(competicao_id, cache_key, cache_value)` to store per-competition
-
-- [ ] **Step 1: Read existing 0015_sync_cache.sql to understand current structure**
-
-```bash
-cat supabase/migrations/0015_sync_cache.sql
-```
-
-Document the current table structure (likely has just `cache_key` and `cache_value`).
-
-- [ ] **Step 2: Create migration to add competicao_id and update functions**
-
-```sql
--- supabase/migrations/0023_sync_cache_competicao.sql
--- 0023 — sync_cache namespaced por competição
-
--- Adicionar competicao_id ao sync_cache
-alter table if exists public.sync_cache 
-add column if not exists competicao_id uuid references public.competicoes (id) on delete cascade;
-
--- Fazer uma PK composta se a tabela tiver cache_key único (confirmar em 0015)
--- Se PK é só cache_key hoje, dropar e recriar
-alter table if exists public.sync_cache drop constraint if exists sync_cache_pkey;
-alter table if exists public.sync_cache add primary key (competicao_id, cache_key);
-
--- Atualizar função sync_cache_exists
-drop function if exists public.sync_cache_exists(text);
-
-create function public.sync_cache_exists(p_competicao_id uuid, p_cache_key text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select exists(
-    select 1 from public.sync_cache
-    where competicao_id = p_competicao_id and cache_key = p_cache_key
-  );
-$$;
-
--- Atualizar função sync_cache_set
-drop function if exists public.sync_cache_set(text, text);
-
-create function public.sync_cache_set(p_competicao_id uuid, p_cache_key text, p_cache_value text)
-returns void
-language sql
-security definer
-set search_path = ''
-as $$
-  insert into public.sync_cache (competicao_id, cache_key, cache_value)
-  values (p_competicao_id, p_cache_key, p_cache_value)
-  on conflict (competicao_id, cache_key) do update
-  set cache_value = p_cache_value;
-$$;
-
--- Atualizar função sync_cache_get
-drop function if exists public.sync_cache_get(text);
-
-create function public.sync_cache_get(p_competicao_id uuid, p_cache_key text)
-returns text
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select cache_value from public.sync_cache
-  where competicao_id = p_competicao_id and cache_key = p_cache_key;
-$$;
-```
-
-- [ ] **Step 3: Validate file exists**
-
-```bash
-ls supabase/migrations/0023_sync_cache_competicao.sql
-```
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add supabase/migrations/0023_sync_cache_competicao.sql
-git commit -m "migration: sync_cache namespaced por competicao
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-```
-
----
-
-## Task 6: TypeScript types + React hooks for competitions
-
-**Files:**
-- Modify: `src/lib/types.ts` — add competition types
-- Create: `src/lib/competicoes.ts` — helper functions + hook
-
-**Interfaces:**
-- Produces: 
-  - Type `Competicao` with fields: `id: string, slug: string, nome: string, formato: 'fases' | 'pontos-corridos', ativa: boolean, ordem: number`
-  - Hook `useCompeticaoSelecionada()` reads/writes localStorage key `competicao_selecionada`
-  - Function `getCompeticoes()` server action to fetch all competitions
-
-- [ ] **Step 1: Add types to src/lib/types.ts**
-
-```typescript
-// src/lib/types.ts
-export type CompetitionFormat = 'fases' | 'pontos-corridos';
-
-export interface Competicao {
-  id: string;
-  slug: string;
-  nome: string;
-  formato: CompetitionFormat;
-  ativa: boolean;
-  ordem: number;
-  created_at?: string;
-}
-
-export interface ProfileCompeticao {
-  user_id: string;
-  competicao_id: string;
-  ativo: boolean;
-  created_at?: string;
-}
-```
-
-- [ ] **Step 2: Create src/lib/competicoes.ts with helpers**
-
-```typescript
-// src/lib/competicoes.ts
-'use client';
-
-import { useEffect, useState } from 'react';
-
-const COMPETICAO_STORAGE_KEY = 'competicao_selecionada';
-
-export function useCompeticaoSelecionada() {
-  const [competicaoId, setCompeticaoId] = useState<string | null>(null);
-  const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    const stored = localStorage.getItem(COMPETICAO_STORAGE_KEY);
-    setCompeticaoId(stored);
-    setIsReady(true);
-  }, []);
-
-  const setCompeticao = (id: string) => {
-    setCompeticaoId(id);
-    localStorage.setItem(COMPETICAO_STORAGE_KEY, id);
-  };
-
-  return { competicaoId, setCompeticao, isReady };
-}
-
-// Server-side: fetch all competitions
-export async function getCompeticoes() {
-  const response = await fetch(
-    new URL('/api/competicoes', process.env.NEXT_PUBLIC_APP_URL),
-    {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    }
-  );
-  if (!response.ok) throw new Error('Failed to fetch competitions');
-  return response.json();
-}
-```
+Run: `ls supabase/migrations/0021_ranking_por_competicao.sql`
+Expected: existe.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/lib/types.ts src/lib/competicoes.ts
-git commit -m "feat: adicionar tipos Competicao + hook useCompeticaoSelecionada
+git add supabase/migrations/0021_ranking_por_competicao.sql
+git commit -m "migration: ranking(competicao_id, periodo) com opt-in ativo
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 7: Create `CompeticaoSelector` component
+## Task 4: `src/lib/competicoes.ts` + threading em `ranking.ts` e `matches.ts`
+
+**Files:**
+- Create: `src/lib/competicoes.ts`
+- Create: `src/lib/__tests__/competicoes.test.ts`
+- Modify: `src/lib/ranking.ts`
+- Modify: `src/lib/matches.ts:21-53` (assinatura de `listarJogos`)
+
+**Interfaces:**
+- Produces:
+  - Tipo `Competicao = { id: string; slug: string; nome: string; formato: 'fases' | 'pontos-corridos'; ativa: boolean; ordem: number }`
+  - `listarCompeticoes(): Promise<Competicao[]>` — todas, ordenadas por `ordem`. Falha aberta: `[]`.
+  - `competicoesVisiveis(todas: Competicao[], slugsComOptIn: string[]): Competicao[]` — pura, testável: ativas ∪ competições onde o usuário tem opt-in. Ordenada por `ordem`.
+  - `COOKIE_COMPETICAO = "competicao"` (constante do nome do cookie, valor = slug)
+  - `resolverCompeticao(todas: Competicao[], slugCookie: string | undefined): Competicao | undefined` — pura: retorna a do cookie se existir e visível, senão a `ativa` de maior `ordem`, senão a primeira.
+  - `listarRanking(competicaoId, periodo)` (assinatura NOVA — ver abaixo)
+  - `listarJogos({ ..., competicaoId })` (campo NOVO no filtro)
+- Consumes: `ranking(p_competicao_id, p_periodo)` (Task 3), `matches.competicao_id` (Task 1)
+
+- [ ] **Step 1: Escrever teste das funções puras**
+
+```typescript
+// src/lib/__tests__/competicoes.test.ts
+import { describe, it, expect } from "vitest";
+import { competicoesVisiveis, resolverCompeticao, type Competicao } from "@/lib/competicoes";
+
+const copa: Competicao = { id: "c1", slug: "copa-mundo-2026", nome: "Copa", formato: "fases", ativa: false, ordem: 1 };
+const bra: Competicao = { id: "c2", slug: "brasileirao-2026", nome: "Brasileirão", formato: "pontos-corridos", ativa: true, ordem: 2 };
+
+describe("competicoesVisiveis", () => {
+  it("inclui ativas e as com opt-in, ordenadas por ordem", () => {
+    expect(competicoesVisiveis([copa, bra], ["copa-mundo-2026"])).toEqual([copa, bra]);
+  });
+  it("exclui inativa sem opt-in", () => {
+    expect(competicoesVisiveis([copa, bra], [])).toEqual([bra]);
+  });
+});
+
+describe("resolverCompeticao", () => {
+  it("usa o cookie quando aponta para competição visível", () => {
+    expect(resolverCompeticao([copa, bra], "copa-mundo-2026")).toEqual(copa);
+  });
+  it("cai na ativa de maior ordem quando sem cookie", () => {
+    expect(resolverCompeticao([copa, bra], undefined)).toEqual(bra);
+  });
+  it("ignora cookie inválido", () => {
+    expect(resolverCompeticao([copa, bra], "inexistente")).toEqual(bra);
+  });
+});
+```
+
+- [ ] **Step 2: Rodar teste e ver falhar**
+
+Run: `npm test -- competicoes`
+Expected: FAIL (módulo/função inexistente).
+
+- [ ] **Step 3: Implementar `src/lib/competicoes.ts`**
+
+```typescript
+// src/lib/competicoes.ts
+import { createClient } from "@/lib/supabase/server";
+
+export type Competicao = {
+  id: string;
+  slug: string;
+  nome: string;
+  formato: "fases" | "pontos-corridos";
+  ativa: boolean;
+  ordem: number;
+};
+
+export const COOKIE_COMPETICAO = "competicao";
+
+const COLS = "id, slug, nome, formato, ativa, ordem";
+
+// Todas as competições, ordenadas por `ordem`. Falha aberta: [] em erro.
+export async function listarCompeticoes(): Promise<Competicao[]> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.from("competicoes").select(COLS).order("ordem");
+    return (data as Competicao[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// Pura: ativas ∪ competições onde o usuário fez opt-in (por slug). Ordenada por `ordem`.
+export function competicoesVisiveis(
+  todas: Competicao[],
+  slugsComOptIn: string[]
+): Competicao[] {
+  const set = new Set(slugsComOptIn);
+  return todas
+    .filter((c) => c.ativa || set.has(c.slug))
+    .sort((a, b) => a.ordem - b.ordem);
+}
+
+// Pura: competição selecionada — cookie válido, senão ativa de maior ordem, senão a 1ª.
+export function resolverCompeticao(
+  todas: Competicao[],
+  slugCookie: string | undefined
+): Competicao | undefined {
+  if (slugCookie) {
+    const doCookie = todas.find((c) => c.slug === slugCookie);
+    if (doCookie) return doCookie;
+  }
+  const ativas = todas.filter((c) => c.ativa).sort((a, b) => b.ordem - a.ordem);
+  return ativas[0] ?? todas[0];
+}
+
+// Slugs de competições em que o usuário logado tem opt-in ativo. Falha aberta: [].
+export async function meusOptIns(): Promise<string[]> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return [];
+    const { data } = await supabase
+      .from("profiles_competicoes")
+      .select("ativo, competicoes(slug)")
+      .eq("user_id", user.id)
+      .eq("ativo", true);
+    return (
+      (data as { competicoes: { slug: string } | null }[] | null) ?? []
+    )
+      .map((r) => r.competicoes?.slug)
+      .filter((s): s is string => Boolean(s));
+  } catch {
+    return [];
+  }
+}
+```
+
+- [ ] **Step 4: Rodar teste e ver passar**
+
+Run: `npm test -- competicoes`
+Expected: PASS.
+
+- [ ] **Step 5: Atualizar `src/lib/ranking.ts`** (assinatura + RPC)
+
+Substituir a função `listarRanking` (linhas 22-32) por:
+
+```typescript
+// Ranking de uma competição, já ordenado. Falha aberta: [] em erro.
+export async function listarRanking(
+  competicaoId: string,
+  periodo: RankingPeriodo = "geral"
+): Promise<RankingRow[]> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.rpc("ranking", {
+      p_competicao_id: competicaoId,
+      p_periodo: periodo,
+    });
+    return (data as RankingRow[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+```
+
+(Mantém `RankingRow`, `RankingPeriodo` inalterados.)
+
+- [ ] **Step 6: Atualizar `src/lib/matches.ts`** — aceitar `competicaoId` no filtro
+
+Em `listarJogos` (linha 21), adicionar `competicaoId?: string;` ao objeto de filtro e, logo após `let q = ...` (linha 31), inserir:
+
+```typescript
+    if (filtro?.competicaoId) q = q.eq("competicao_id", filtro.competicaoId);
+```
+
+- [ ] **Step 7: Rodar suíte inteira + typecheck**
+
+Run: `npm test`
+Expected: testes de `competicoes` passam; nada quebra.
+Run: `npm run build`
+Expected: **irá falhar** nos chamadores de `listarRanking`/`listarJogos` que ainda passam a assinatura antiga — esses são corrigidos nas Tasks 6-9. Anotar os erros e prosseguir (não corrigir páginas aqui).
+
+> Nota ao implementer: NÃO altere páginas nesta task. A quebra de tipo nos chamadores é esperada e será resolvida nas tasks de página. Comite apenas `src/lib/*`.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/lib/competicoes.ts src/lib/__tests__/competicoes.test.ts src/lib/ranking.ts src/lib/matches.ts
+git commit -m "feat: lib competicoes + threading de competicaoId em ranking/matches
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 5: `CompeticaoSelector` (client, cookie + refresh)
 
 **Files:**
 - Create: `src/components/competicao/competicao-selector.tsx`
 - Create: `src/components/competicao/__tests__/competicao-selector.test.tsx`
 
 **Interfaces:**
-- Consumes: `useCompeticaoSelecionada` hook, `Competicao[]` prop
-- Produces: dropdown component that:
-  - Displays list of active competitions OR competitions user has opted into
-  - Persists selection to localStorage via hook
-  - Fires `onCompeticaoChange(competicaoId)` callback on selection change
-  - Styled with Tailwind, dark/light theme aware, accessible (proper labels, focus visible)
+- Consumes: `Competicao` (Task 4), `COOKIE_COMPETICAO`
+- Produces: `<CompeticaoSelector competicoes={Competicao[]} selecionadaId={string} />` — client component. Ao mudar: grava cookie `competicao=<slug>` (path=/, max-age 1 ano) e chama `router.refresh()`. Se `competicoes.length <= 1`, não renderiza nada (não há o que trocar).
 
-- [ ] **Step 1: Write component test**
+- [ ] **Step 1: Escrever teste**
 
 ```typescript
 // src/components/competicao/__tests__/competicao-selector.test.tsx
-import { render, screen, fireEvent } from '@testing-library/react';
-import { CompeticaoSelector } from '../competicao-selector';
-import type { Competicao } from '@/lib/types';
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { CompeticaoSelector } from "../competicao-selector";
+import type { Competicao } from "@/lib/competicoes";
 
-const mockCompeticoes: Competicao[] = [
-  { id: '1', slug: 'copa-2026', nome: 'Copa do Mundo 2026', formato: 'fases', ativa: false, ordem: 1 },
-  { id: '2', slug: 'brasileirao-2026', nome: 'Brasileirão 2026', formato: 'pontos-corridos', ativa: true, ordem: 2 }
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
+const comps: Competicao[] = [
+  { id: "c1", slug: "copa-mundo-2026", nome: "Copa do Mundo 2026", formato: "fases", ativa: false, ordem: 1 },
+  { id: "c2", slug: "brasileirao-2026", nome: "Brasileirão Série A 2026", formato: "pontos-corridos", ativa: true, ordem: 2 },
 ];
 
-describe('CompeticaoSelector', () => {
-  it('renders list of competitions', () => {
-    render(<CompeticaoSelector competicoes={mockCompeticoes} />);
-    expect(screen.getByText('Copa do Mundo 2026')).toBeInTheDocument();
-    expect(screen.getByText('Brasileirão 2026')).toBeInTheDocument();
+describe("CompeticaoSelector", () => {
+  it("lista as competições e marca a selecionada", () => {
+    render(<CompeticaoSelector competicoes={comps} selecionadaId="c2" />);
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select.value).toBe("c2");
+    expect(screen.getByRole("option", { name: "Copa do Mundo 2026" })).toBeInTheDocument();
   });
 
-  it('calls onCompeticaoChange when selection changes', () => {
-    const onChange = jest.fn();
-    render(<CompeticaoSelector competicoes={mockCompeticoes} onCompeticaoChange={onChange} />);
-    const select = screen.getByRole('combobox');
-    fireEvent.change(select, { target: { value: '2' } });
-    expect(onChange).toHaveBeenCalledWith('2');
-  });
-
-  it('renders select accessible to keyboard navigation', () => {
-    render(<CompeticaoSelector competicoes={mockCompeticoes} />);
-    const select = screen.getByRole('combobox');
-    expect(select).toHaveAttribute('aria-label');
+  it("não renderiza com uma só competição", () => {
+    const { container } = render(<CompeticaoSelector competicoes={[comps[1]]} selecionadaId="c2" />);
+    expect(container.firstChild).toBeNull();
   });
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Rodar teste e ver falhar**
 
-```bash
-npm test -- competicao-selector.test.tsx 2>&1 | head -20
-```
+Run: `npm test -- competicao-selector`
+Expected: FAIL (componente inexistente).
 
-Expected: Component not found / export error
+- [ ] **Step 3: Implementar**
 
-- [ ] **Step 3: Implement component**
-
-```typescript
+```tsx
 // src/components/competicao/competicao-selector.tsx
-'use client';
+"use client";
 
-import { useCompeticaoSelecionada } from '@/lib/competicoes';
-import type { Competicao } from '@/lib/types';
-import { useEffect, useState } from 'react';
+import { useRouter } from "next/navigation";
+import { COOKIE_COMPETICAO, type Competicao } from "@/lib/competicoes";
 
-interface CompeticaoSelectorProps {
+export function CompeticaoSelector({
+  competicoes,
+  selecionadaId,
+}: {
   competicoes: Competicao[];
-  onCompeticaoChange?: (competicaoId: string) => void;
-}
+  selecionadaId: string;
+}) {
+  const router = useRouter();
 
-export function CompeticaoSelector({ competicoes, onCompeticaoChange }: CompeticaoSelectorProps) {
-  const { competicaoId, setCompeticao, isReady } = useCompeticaoSelecionada();
-  const [displayValue, setDisplayValue] = useState('');
+  if (competicoes.length <= 1) return null;
 
-  // Determinar valor default: primeiro ativo, ou primeiro do list
-  useEffect(() => {
-    if (!isReady) return;
-    
-    const defaultValue = competicaoId || 
-      competicoes.find(c => c.ativa)?.id || 
-      competicoes[0]?.id;
-    
-    if (defaultValue && defaultValue !== displayValue) {
-      setDisplayValue(defaultValue);
-    }
-  }, [isReady, competicaoId, competicoes, displayValue]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newId = e.target.value;
-    setDisplayValue(newId);
-    setCompeticao(newId);
-    onCompeticaoChange?.(newId);
-  };
-
-  if (!isReady) return null;
+  function aoTrocar(e: React.ChangeEvent<HTMLSelectElement>) {
+    const comp = competicoes.find((c) => c.id === e.target.value);
+    if (!comp) return;
+    // Cookie de 1 ano, escopo raiz. Lido no servidor para renderizar a competição certa.
+    document.cookie = `${COOKIE_COMPETICAO}=${comp.slug}; path=/; max-age=31536000; samesite=lax`;
+    router.refresh();
+  }
 
   return (
-    <div className="flex items-center gap-2">
-      <label htmlFor="competicao-select" className="text-sm font-medium text-foreground">
-        Competição
-      </label>
+    <label className="flex items-center gap-2 text-sm">
+      <span className="sr-only">Competição</span>
       <select
-        id="competicao-select"
-        value={displayValue}
-        onChange={handleChange}
-        className="rounded-md border border-border bg-background px-3 py-1 text-sm text-foreground 
-                   focus:outline-none focus-visible:ring-2 focus-visible:ring-primary
-                   dark:bg-slate-900 dark:border-slate-700"
+        value={selecionadaId}
+        onChange={aoTrocar}
         aria-label="Selecionar competição"
+        className="cursor-pointer rounded-lg border border-border bg-card px-3 py-1.5 font-display text-sm font-semibold uppercase tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {competicoes.map(c => (
+        {competicoes.map((c) => (
           <option key={c.id} value={c.id}>
             {c.nome}
           </option>
         ))}
       </select>
-    </div>
+    </label>
   );
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Rodar teste e ver passar**
 
-```bash
-npm test -- competicao-selector.test.tsx
-```
-
-Expected: PASS
+Run: `npm test -- competicao-selector`
+Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/components/competicao/competicao-selector.tsx src/components/competicao/__tests__/competicao-selector.test.tsx
-git commit -m "feat: CompeticaoSelector component com localStorage persistence
+git add src/components/competicao/
+git commit -m "feat: CompeticaoSelector (cookie + router.refresh)
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 8: Update `sync-matches` Edge Function for multi-competition loop
+## Task 6: Integrar seletor no header + resolver competição no ranking
 
 **Files:**
-- Modify: `supabase/functions/sync-matches/index.ts`
-
-**Interfaces:**
-- Consumes: `competicoes` table with `fs_tournament_url`, `formato`; cache functions with `competicao_id`
-- Produces: 
-  - Loops over `select id, slug, fs_tournament_url, formato from competicoes where ativa = true`
-  - For `formato = 'fases'`: keeps current stage detection logic
-  - For `formato = 'pontos-corridos'`: uses `fase = 'pontos-corridos'` fixed, reads rodada from API response
-  - All upserts include `competicao_id` in insert/update
-  - Cache calls now pass `competicao_id` parameter
-
-- [ ] **Step 1: Document current sync-matches structure (no code change yet)**
-
-Read the file to understand:
-- How it currently fetches and processes one tournament
-- Where cache is used
-- Where competicao_id needs to be threaded through
-
-```bash
-head -100 supabase/functions/sync-matches/index.ts
-```
-
-- [ ] **Step 2: Implement multi-competition loop**
-
-Key changes to make:
-1. Fetch all active competitions at start
-2. Loop each, passing `competicao_id` through all DB operations
-3. For `formato = 'fases'`: keep stage detection
-4. For `formato = 'pontos-corridos'`: use fixed fase, extract rodada from API
-
-Example snippet of loop structure:
-
-```typescript
-// supabase/functions/sync-matches/index.ts
-const competicoes = await supabase
-  .from('competicoes')
-  .select('id, slug, fs_tournament_url, formato')
-  .eq('ativa', true);
-
-if (competicoes.error) throw competicoes.error;
-
-for (const comp of competicoes.data) {
-  Deno.serve(() => syncCompetition(comp.id, comp.fs_tournament_url, comp.formato));
-}
-
-async function syncCompetition(
-  competicaoId: string, 
-  tournamentUrl: string, 
-  formato: 'fases' | 'pontos-corridos'
-) {
-  // ... reuse existing sync logic, add competicao_id to all matches inserts/updates
-}
-```
-
-Replace the hardcoded `FS_TOURNAMENT_URL` with `fs_tournament_url` from the table.
-
-Update all `matches` insert/update to include `competicao_id: competicaoId`.
-
-Update cache calls: `sync_cache_set(competicaoId, key, val)` instead of `sync_cache_set(key, val)`.
-
-- [ ] **Step 3: Test locally (or document test plan)**
-
-Once deployed, trigger sync manually or wait for cron, verify:
-- Copa matches still sync (if URL is set in DB)
-- Brasileirão matches begin syncing (if URL is set in DB)
-- Cache does not collide (separate namespaces per competition)
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add supabase/functions/sync-matches/index.ts
-git commit -m "refactor: sync-matches generalizado para loop multi-competicao
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-```
-
----
-
-## Task 9: Update `/ranking/page.tsx` and `ranking/actions.ts` with competition selector
-
-**Files:**
+- Modify: `src/components/site-header.tsx`
 - Modify: `src/app/ranking/page.tsx`
 - Modify: `src/app/ranking/actions.ts`
+- Modify: `src/components/ranking/ranking-content.tsx`
 
 **Interfaces:**
-- Consumes: `useCompeticaoSelecionada`, `CompeticaoSelector` component, `getCompeticoes()`
-- Produces: 
-  - Page now passes selected `competicao_id` to server action
-  - Server action calls `ranking(competicao_id, periodo)` with the selected competition
-  - If `formato = 'fases'` (Copa), show sub-selector for T1/T2/Geral (implement `season-selector` as planned in spec 2026-07-04)
-  - Default to Brasileirão on first load
+- Consumes: `listarCompeticoes`, `meusOptIns`, `competicoesVisiveis`, `resolverCompeticao`, `COOKIE_COMPETICAO` (Task 4); `CompeticaoSelector` (Task 5); `listarRanking(competicaoId, periodo)` (Task 4)
+- Produces:
+  - `site-header.tsx` renderiza `<CompeticaoSelector>` (server component lê cookie + competições visíveis e passa como props) e um link para `/perfil/competicoes`.
+  - `ranking/page.tsx` resolve competição via cookie e chama `listarRanking(comp.id, "geral")`, passando `comp` para `RankingContent`.
+  - `buscarRanking(competicaoId, periodo)` — server action com competição explícita.
+  - `RankingContent` recebe `competicao: Competicao` e só mostra `<SeasonSelector>` quando `competicao.formato === "fases"`.
 
-- [ ] **Step 1: Update server action to accept competition_id**
+- [ ] **Step 1: Ler os arquivos atuais** para preservar layout/props.
 
-```typescript
-// src/app/ranking/actions.ts
-'use server';
+Run: `sed -n '1,80p' src/components/site-header.tsx`
+(O implementer deve inserir o seletor sem quebrar o header existente — provavelmente ao lado do theme-toggle.)
 
-import { createServerClient } from '@/lib/supabase/server';
-import type { Competicao } from '@/lib/types';
+- [ ] **Step 2: `site-header.tsx`** — buscar competições visíveis e renderizar o seletor
 
-export async function buscarRanking(competicaoId: string, periodo: string = 'geral') {
-  const supabase = await createServerClient();
-  
-  // Fetch ranking for this competition
-  const { data, error } = await supabase.rpc('ranking', {
-    p_competicao_id: competicaoId,
-    p_periodo: periodo
-  });
+Como o header já é usado em páginas server, torná-lo `async` server component (se ainda não for) e no topo:
 
-  if (error) throw error;
-  return data;
-}
+```tsx
+import { cookies } from "next/headers";
+import { CompeticaoSelector } from "@/components/competicao/competicao-selector";
+import {
+  listarCompeticoes,
+  meusOptIns,
+  competicoesVisiveis,
+  resolverCompeticao,
+  COOKIE_COMPETICAO,
+} from "@/lib/competicoes";
 
-export async function fetchCompeticoes() {
-  const supabase = await createServerClient();
-  
-  const { data, error } = await supabase
-    .from('competicoes')
-    .select('*')
-    .order('ordem');
-
-  if (error) throw error;
-  return data as Competicao[];
-}
+// dentro do componente async:
+const [todas, optIns, cookieStore] = await Promise.all([
+  listarCompeticoes(),
+  meusOptIns(),
+  cookies(),
+]);
+const visiveis = competicoesVisiveis(todas, optIns);
+const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
 ```
 
-- [ ] **Step 2: Update page component**
+E no JSX, junto aos controles do header:
 
-```typescript
-// src/app/ranking/page.tsx (simplified skeleton)
-'use client';
+```tsx
+{atual && <CompeticaoSelector competicoes={visiveis} selecionadaId={atual.id} />}
+<a href="/perfil/competicoes" className="text-sm text-muted-foreground hover:text-foreground">
+  Minhas competições
+</a>
+```
 
-import { CompeticaoSelector } from '@/components/competicao/competicao-selector';
-import { useCompeticaoSelecionada } from '@/lib/competicoes';
-import { buscarRanking, fetchCompeticoes } from './actions';
-import { useEffect, useState } from 'react';
-import type { Competicao } from '@/lib/types';
+> Se `site-header.tsx` hoje for síncrono/client, o implementer deve extrair a busca para o server component pai OU tornar o header async (é usado em páginas server). Decidir preservando o comportamento atual; não quebrar navegação/theme-toggle.
 
-export default function RankingPage() {
-  const { competicaoId, setCompeticao } = useCompeticaoSelecionada();
-  const [competicoes, setCompeticoes] = useState<Competicao[]>([]);
-  const [ranking, setRanking] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [periodo, setPeriodo] = useState('geral');
+- [ ] **Step 3: `ranking/page.tsx`** — resolver competição e passar para o conteúdo
 
-  // Load competitions on mount
-  useEffect(() => {
-    (async () => {
-      const comps = await fetchCompeticoes();
-      setCompeticoes(comps);
-      
-      // Set default competition if not set
-      if (!competicaoId) {
-        const defaultComp = comps.find(c => c.ativa) || comps[0];
-        setCompeticao(defaultComp.id);
-      }
-    })();
-  }, []);
+```tsx
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
+import { RankingContent } from "@/components/ranking/ranking-content";
+import { getSessao } from "@/lib/auth/profile";
+import { listarRanking } from "@/lib/ranking";
+import {
+  listarCompeticoes, meusOptIns, competicoesVisiveis, resolverCompeticao, COOKIE_COMPETICAO,
+} from "@/lib/competicoes";
 
-  // Load ranking when competition or periodo changes
-  useEffect(() => {
-    if (!competicaoId) return;
-    
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await buscarRanking(competicaoId, periodo);
-        setRanking(data);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [competicaoId, periodo]);
+export default async function RankingPage() {
+  const sessao = await getSessao();
+  if (!sessao) redirect("/entrar");
 
-  const currentCompeticao = competicoes.find(c => c.id === competicaoId);
-  const showTemporadaSelector = currentCompeticao?.formato === 'fases';
+  const [todas, optIns, cookieStore] = await Promise.all([
+    listarCompeticoes(), meusOptIns(), cookies(),
+  ]);
+  const visiveis = competicoesVisiveis(todas, optIns);
+  const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
+
+  const linhas = atual ? await listarRanking(atual.id, "geral") : [];
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-4xl font-bold">Ranking</h1>
-      
-      <CompeticaoSelector 
-        competicoes={competicoes}
-        onCompeticaoChange={setCompeticao}
-      />
-
-      {showTemporadaSelector && (
-        <div>
-          <label className="text-sm font-medium">Temporada</label>
-          {/* TODO: integrate season-selector once 2026-07-04 spec is implemented */}
-          <select value={periodo} onChange={e => setPeriodo(e.target.value)}>
-            <option value="geral">Geral</option>
-            <option value="temporada_1">Temporada 1 (Grupos)</option>
-            <option value="temporada_2">Temporada 2 (Mata-mata)</option>
-          </select>
-        </div>
-      )}
-
-      {loading && <div className="text-center">Carregando...</div>}
-      
-      {/* TODO: Render pódio and ranking table (existing logic, just with new data) */}
-      <pre>{JSON.stringify(ranking, null, 2)}</pre>
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-10 sm:px-6">
+        <h1 className="mb-8 font-display text-3xl font-bold uppercase tracking-tight">
+          Ranking
+        </h1>
+        {atual ? (
+          <RankingContent linhasIniciais={linhas} meuId={sessao.userId} competicao={atual} />
+        ) : (
+          <p className="text-muted-foreground">Nenhuma competição disponível.</p>
+        )}
+      </main>
+      <SiteFooter />
     </div>
   );
 }
 ```
 
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/app/ranking/page.tsx src/app/ranking/actions.ts
-git commit -m "feat: ranking page com seletor de competicao e periodo
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-```
-
----
-
-## Task 10: Update `/jogos` (palpites) page with competition selector
-
-**Files:**
-- Modify: `src/app/jogos/page.tsx`
-- Modify: `src/app/jogos/actions.ts`
-
-**Interfaces:**
-- Consumes: `CompeticaoSelector`, competition selector logic
-- Produces: 
-  - Jogos page filters by selected competition
-  - Shows "Você ainda não está participando" card if user not opted-in to selected competition
-  - Fetches matches for that competition only
-  - Pass `competicao_id` to `palpite_aberto()` checks
-
-- [ ] **Step 1: Update server actions**
+- [ ] **Step 4: `ranking/actions.ts`** — competição explícita
 
 ```typescript
-// src/app/jogos/actions.ts
-'use server';
+"use server";
 
-import { createServerClient } from '@/lib/supabase/server';
+import { listarRanking, type RankingPeriodo, type RankingRow } from "@/lib/ranking";
 
-export async function buscarJogos(competicaoId: string) {
-  const supabase = await createServerClient();
-  
-  const { data, error } = await supabase
-    .from('matches')
-    .select('*')
-    .eq('competicao_id', competicaoId)
-    .order('inicio_em', { ascending: true });
+const PERIODOS: RankingPeriodo[] = ["geral", "temporada_1", "temporada_2"];
 
-  if (error) throw error;
-  return data;
-}
-
-export async function verificarParticipacao(competicaoId: string, userId: string) {
-  const supabase = await createServerClient();
-  
-  const { data, error } = await supabase
-    .from('profiles_competicoes')
-    .select('ativo')
-    .eq('user_id', userId)
-    .eq('competicao_id', competicaoId)
-    .single();
-
-  if (error) return { ativo: false }; // Usuário não tem opt-in
-  return data;
+export async function buscarRanking(
+  competicaoId: string,
+  periodo: string
+): Promise<RankingRow[]> {
+  const p: RankingPeriodo = (PERIODOS as string[]).includes(periodo)
+    ? (periodo as RankingPeriodo)
+    : "geral";
+  return listarRanking(competicaoId, p);
 }
 ```
 
-- [ ] **Step 2: Update page component**
+- [ ] **Step 5: `ranking-content.tsx`** — receber `competicao`, condicionar SeasonSelector
 
-```typescript
-// src/app/jogos/page.tsx (simplified)
-'use client';
+Alterar a assinatura e o corpo:
 
-import { CompeticaoSelector } from '@/components/competicao/competicao-selector';
-import { useCompeticaoSelecionada } from '@/lib/competicoes';
-import { buscarJogos, fetchCompeticoes, verificarParticipacao } from './actions';
-import { useUser } from '@/lib/auth'; // Assuming this exists
-import { useEffect, useState } from 'react';
-import type { Competicao } from '@/lib/types';
+```tsx
+import type { Competicao } from "@/lib/competicoes";
+// ...
+export function RankingContent({
+  linhasIniciais,
+  meuId,
+  competicao,
+}: {
+  linhasIniciais: RankingRow[];
+  meuId: string;
+  competicao: Competicao;
+}) {
+  const [periodo, setPeriodo] = useState<RankingPeriodo>("geral");
+  const [linhas, setLinhas] = useState<RankingRow[]>(linhasIniciais);
+  const [carregando, setCarregando] = useState(false);
+  const periodoAtualRef = useRef<RankingPeriodo>("geral");
 
-export default function JogosPage() {
-  const { competicaoId, setCompeticao } = useCompeticaoSelecionada();
-  const { user } = useUser();
-  const [competicoes, setCompeticoes] = useState<Competicao[]>([]);
-  const [jogos, setJogos] = useState([]);
-  const [participacao, setParticipacao] = useState({ ativo: false });
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const comps = await fetchCompeticoes();
-      setCompeticoes(comps);
-      if (!competicaoId) {
-        const defaultComp = comps.find(c => c.ativa) || comps[0];
-        setCompeticao(defaultComp.id);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!competicaoId || !user) return;
-
-    (async () => {
-      setLoading(true);
-      try {
-        const [jogosData, particip] = await Promise.all([
-          buscarJogos(competicaoId),
-          verificarParticipacao(competicaoId, user.id)
-        ]);
-        setJogos(jogosData);
-        setParticipacao(particip);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [competicaoId, user]);
-
-  if (!participacao.ativo && !loading) {
-    const currentComp = competicoes.find(c => c.id === competicaoId);
-    return (
-      <div className="space-y-6">
-        <h1 className="text-4xl font-bold">Palpites</h1>
-        <CompeticaoSelector competicoes={competicoes} onCompeticaoChange={setCompeticao} />
-        
-        <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4 dark:bg-yellow-900/20 dark:border-yellow-700">
-          <p className="font-medium">Você ainda não está participando do {currentComp?.nome}</p>
-          <p className="text-sm text-muted-foreground mt-2">
-            Vá até <a href="/perfil/competicoes" className="underline">Minhas competições</a> para ativar sua participação.
-          </p>
-        </div>
-      </div>
-    );
+  async function aoTrocarPeriodo(novoPeriodo: RankingPeriodo) {
+    setPeriodo(novoPeriodo);
+    periodoAtualRef.current = novoPeriodo;
+    setCarregando(true);
+    try {
+      const resultado = await buscarRanking(competicao.id, novoPeriodo);
+      if (periodoAtualRef.current === novoPeriodo) setLinhas(resultado);
+    } catch {
+      // falha aberta
+    } finally {
+      if (periodoAtualRef.current === novoPeriodo) setCarregando(false);
+    }
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-4xl font-bold">Palpites</h1>
-      <CompeticaoSelector competicoes={competicoes} onCompeticaoChange={setCompeticao} />
-      
-      {loading && <div>Carregando...</div>}
-      
-      {/* TODO: Render jogos list with prediction form (existing logic) */}
-      <pre>{JSON.stringify(jogos, null, 2)}</pre>
+    <div>
+      {competicao.formato === "fases" && (
+        <SeasonSelector periodo={periodo} onChange={aoTrocarPeriodo} />
+      )}
+      {/* resto inalterado: skeleton / vazio / Podium+Tabela */}
+      {/* ... */}
     </div>
   );
 }
 ```
 
-- [ ] **Step 3: Commit**
+(O restante do corpo — skeletons, estado vazio, `Podium`/`RankingTable`/`RankingListaMobile` — permanece exatamente como está hoje.)
+
+- [ ] **Step 6: Rodar testes + build**
+
+Run: `npm test`
+Expected: PASS (inclusive testes existentes de ranking-content, se houver — ajustar mocks para a nova prop `competicao` se algum teste renderizar `RankingContent`).
+Run: `npm run build`
+Expected: ranking compila. Jogos/histórico ainda podem quebrar (Tasks 7-9). Anotar.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/app/jogos/page.tsx src/app/jogos/actions.ts
-git commit -m "feat: jogos/palpites com seletor competicao + verificacao opt-in
+git add src/components/site-header.tsx src/app/ranking/ src/components/ranking/ranking-content.tsx
+git commit -m "feat: seletor de competicao no header + ranking por competicao
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 11: Update `/historico` page with competition selector
+## Task 7: `/jogos` filtra por competição + card de opt-in
+
+**Files:**
+- Modify: `src/app/jogos/page.tsx`
+
+**Interfaces:**
+- Consumes: `listarJogos({ competicaoId })` (Task 4), resolvedor de competição (Task 4), `meusOptIns` (Task 4)
+- Produces: página de jogos filtra `matches` pela competição atual. Se o usuário não tem opt-in na competição atual, mostra card "Você ainda não está participando de {nome} — ative em Minhas competições" no lugar da lista. Título deixa de ser fixo "Jogos da Copa" e passa a usar o nome da competição.
+
+- [ ] **Step 1: Atualizar `jogos/page.tsx`**
+
+Resolver a competição atual (mesmo trio `listarCompeticoes`/`meusOptIns`/cookie) e:
+- passar `competicaoId: atual.id` para `listarJogos(...)`;
+- se `atual` não estiver nos `optIns`, renderizar o card de opt-in (com link para `/perfil/competicoes`) em vez da grade;
+- trocar o `<h1>` de `"Jogos da Copa"` para `{atual?.nome ?? "Jogos"}`.
+
+```tsx
+// trecho-chave — manter todo o resto (searchParams, filtros, MatchCard) intacto
+import { cookies } from "next/headers";
+import {
+  listarCompeticoes, meusOptIns, competicoesVisiveis, resolverCompeticao, COOKIE_COMPETICAO,
+} from "@/lib/competicoes";
+
+// ... dentro do componente, após checar sessão:
+const [todas, optIns, cookieStore] = await Promise.all([
+  listarCompeticoes(), meusOptIns(), cookies(),
+]);
+const visiveis = competicoesVisiveis(todas, optIns);
+const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
+const participando = atual ? optIns.includes(atual.slug) : false;
+
+// título:
+<h1 className="mb-6 font-display text-3xl font-bold uppercase tracking-tight">
+  {atual?.nome ?? "Jogos"}
+</h1>
+
+// se não participa, no lugar de <JogosFiltro/> + grade:
+{!participando ? (
+  <div className="rounded-2xl border border-border bg-card p-6 text-center">
+    <p className="mb-3 text-muted-foreground">
+      Você ainda não está participando de <strong className="text-foreground">{atual?.nome}</strong>.
+    </p>
+    <a href="/perfil/competicoes" className="font-display font-semibold uppercase tracking-tight text-accent hover:underline">
+      Ativar participação
+    </a>
+  </div>
+) : (
+  /* JogosFiltro + grade existentes, agora com listarJogos({ ..., competicaoId: atual.id }) */
+)}
+```
+
+O `listarJogos(...)` passa a incluir `competicaoId: atual?.id` no objeto de filtro (só busca se `atual` existir; senão lista vazia).
+
+- [ ] **Step 2: Rodar build**
+
+Run: `npm run build`
+Expected: `/jogos` compila.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/app/jogos/page.tsx
+git commit -m "feat: /jogos filtra por competicao + card de opt-in
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 8: `/historico` filtra por competição
 
 **Files:**
 - Modify: `src/app/historico/page.tsx`
-- Modify: `src/app/historico/actions.ts` (if exists)
 
 **Interfaces:**
-- Consumes: `CompeticaoSelector`, Competição selecionada
-- Produces: 
-  - Histórico filters matches/predictions by selected competition
-  - Shows "Sem resultados" if no matches for that competition
+- Consumes: `listarJogos({ competicaoId })`, resolvedor de competição
+- Produces: histórico só considera jogos da competição atual (passa `competicaoId` ao `listarJogos()`). Resto (filtro finalizado+palpite, Resumo, HistoricoItem) inalterado.
 
-- [ ] **Step 1: Add server action to fetch historical matches**
+- [ ] **Step 1: Atualizar `historico/page.tsx`**
 
-```typescript
-// src/app/historico/actions.ts (create if not exists)
-'use server';
+Resolver competição atual e trocar:
 
-import { createServerClient } from '@/lib/supabase/server';
-
-export async function buscarHistorico(competicaoId: string) {
-  const supabase = await createServerClient();
-  const userId = (await supabase.auth.getUser()).data.user?.id;
-  
-  if (!userId) throw new Error('Not authenticated');
-
-  const { data, error } = await supabase
-    .from('matches')
-    .select(`
-      *,
-      predictions!inner (
-        user_id,
-        palpite_casa,
-        palpite_fora,
-        pontos
-      )
-    `)
-    .eq('competicao_id', competicaoId)
-    .eq('predictions.user_id', userId)
-    .eq('status', 'finalizado')
-    .order('inicio_em', { ascending: false });
-
-  if (error) throw error;
-  return data;
-}
+```tsx
+const [jogos, palpites] = await Promise.all([listarJogos(), listarMeusPalpites()]);
 ```
 
-- [ ] **Step 2: Update historico page**
+por (com a resolução de competição acima):
 
-```typescript
-// src/app/historico/page.tsx
-'use client';
-
-import { CompeticaoSelector } from '@/components/competicao/competicao-selector';
-import { useCompeticaoSelecionada } from '@/lib/competicoes';
-import { buscarHistorico, fetchCompeticoes } from './actions';
-import { useEffect, useState } from 'react';
-import type { Competicao } from '@/lib/types';
-
-export default function HistoricoPage() {
-  const { competicaoId, setCompeticao } = useCompeticaoSelecionada();
-  const [competicoes, setCompeticoes] = useState<Competicao[]>([]);
-  const [historico, setHistorico] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const comps = await fetchCompeticoes();
-      setCompeticoes(comps);
-      if (!competicaoId) {
-        const defaultComp = comps.find(c => c.ativa) || comps[0];
-        setCompeticao(defaultComp.id);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!competicaoId) return;
-    
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await buscarHistorico(competicaoId);
-        setHistorico(data);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [competicaoId]);
-
-  return (
-    <div className="space-y-6">
-      <h1 className="text-4xl font-bold">Histórico</h1>
-      <CompeticaoSelector competicoes={competicoes} onCompeticaoChange={setCompeticao} />
-      
-      {loading && <div>Carregando...</div>}
-      {historico.length === 0 && !loading && (
-        <p className="text-muted-foreground">Sem resultados para essa competição.</p>
-      )}
-      
-      {/* TODO: Render historico table (existing logic) */}
-      <pre>{JSON.stringify(historico, null, 2)}</pre>
-    </div>
-  );
-}
+```tsx
+const [jogos, palpites] = await Promise.all([
+  atual ? listarJogos({ competicaoId: atual.id }) : Promise.resolve([]),
+  listarMeusPalpites(),
+]);
 ```
+
+(Adicionar o trio de resolução `listarCompeticoes`/`meusOptIns`/cookie + `resolverCompeticao` como nas tasks anteriores.)
+
+- [ ] **Step 2: Build**
+
+Run: `npm run build`
+Expected: `/historico` compila.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/app/historico/page.tsx src/app/historico/actions.ts
-git commit -m "feat: historico com seletor competicao
+git add src/app/historico/page.tsx
+git commit -m "feat: /historico filtra por competicao
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 12: Update `/regras` page with competition config display
+## Task 9: `/regras` — rótulo por competição
 
 **Files:**
 - Modify: `src/app/regras/page.tsx`
-- Modify: `src/app/regras/actions.ts` (if exists)
 
 **Interfaces:**
-- Consumes: `CompeticaoSelector`, `app_config` filtered by competition
-- Produces: 
-  - Regras page shows competition config (pontuação) for selected competition
-  - Display is competition-agnostic (just reads from app_config)
+- Consumes: resolvedor de competição
+- Produces: página de regras mostra o nome da competição atual num subtítulo. Como o modelo é global (Modelo A), o conteúdo de pontuação **não muda por competição**; para o Brasileirão, esconder a nota específica de "Temporada 1/2 da Copa" (que só faz sentido para `formato = 'fases'`).
 
-- [ ] **Step 1: Add server action to fetch app_config by competition**
+- [ ] **Step 1: Tornar `regras/page.tsx` async e resolver competição**
 
-```typescript
-// src/app/regras/actions.ts
-'use server';
+Adicionar o trio de resolução. Sob o `<h1>`, inserir um subtítulo com `{atual?.nome}`. Envolver os dois blocos que falam de "Temporada 1/Temporada 2" e "Mudança de pontuação em 04/07/2026" em `{atual?.formato === "fases" && ( ... )}` — para o Brasileirão eles não aparecem.
 
-import { createServerClient } from '@/lib/supabase/server';
-
-export async function fetchAppConfig(competicaoId: string) {
-  const supabase = await createServerClient();
-  
-  const { data, error } = await supabase
-    .from('app_config')
-    .select('*')
-    .eq('competicao_id', competicaoId);
-
-  if (error) throw error;
-  
-  // Converte array de rows em objeto { chave: valor }
-  return Object.fromEntries(data.map(row => [row.chave, row.valor]));
+```tsx
+export default async function RegrasPage() {
+  const [todas, optIns, cookieStore] = await Promise.all([
+    listarCompeticoes(), meusOptIns(), cookies(),
+  ]);
+  const visiveis = competicoesVisiveis(todas, optIns);
+  const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
+  // ... render; usar {atual?.nome} no subtítulo e condicionar os blocos da Copa a atual?.formato === "fases"
 }
 ```
 
-- [ ] **Step 2: Update regras page**
+(O array `NIVEIS` e a estrutura visual permanecem. Só o texto introdutório que hoje afirma "valores da Temporada 2 — Mata-mata" deve virar condicional: para pontos-corridos, dizer apenas que os valores abaixo são os vigentes.)
 
-```typescript
-// src/app/regras/page.tsx
-'use client';
+- [ ] **Step 2: Build**
 
-import { CompeticaoSelector } from '@/components/competicao/competicao-selector';
-import { useCompeticaoSelecionada } from '@/lib/competicoes';
-import { fetchCompeticoes, fetchAppConfig } from './actions';
-import { useEffect, useState } from 'react';
-import type { Competicao } from '@/lib/types';
-
-export default function RegrasPage() {
-  const { competicaoId, setCompeticao } = useCompeticaoSelecionada();
-  const [competicoes, setCompeticoes] = useState<Competicao[]>([]);
-  const [config, setConfig] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const comps = await fetchCompeticoes();
-      setCompeticoes(comps);
-      if (!competicaoId) {
-        const defaultComp = comps.find(c => c.ativa) || comps[0];
-        setCompeticao(defaultComp.id);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!competicaoId) return;
-    
-    (async () => {
-      setLoading(true);
-      try {
-        const configData = await fetchAppConfig(competicaoId);
-        setConfig(configData);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [competicaoId]);
-
-  return (
-    <div className="space-y-8">
-      <h1 className="text-4xl font-bold">Regras</h1>
-      <CompeticaoSelector competicoes={competicoes} onCompeticaoChange={setCompeticao} />
-      
-      {loading && <div>Carregando...</div>}
-      
-      <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">Pontuação</h2>
-        <table className="w-full border-collapse">
-          <tbody>
-            <tr className="border-b">
-              <td className="py-2 px-3 font-medium">Placar Exato</td>
-              <td className="py-2 px-3">{config.pts_placar_exato} pontos</td>
-            </tr>
-            <tr className="border-b">
-              <td className="py-2 px-3 font-medium">Resultado (V/E/D)</td>
-              <td className="py-2 px-3">{config.pts_resultado} pontos</td>
-            </tr>
-            <tr className="border-b">
-              <td className="py-2 px-3 font-medium">Saldo de Gols</td>
-              <td className="py-2 px-3">{config.pts_saldo} pontos</td>
-            </tr>
-            <tr>
-              <td className="py-2 px-3 font-medium">Time Marca</td>
-              <td className="py-2 px-3">{config.pts_time_marca} ponto</td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <p className="text-sm text-muted-foreground mt-4">
-          Corte para palpites: {config.minutos_corte} minutos antes do jogo
-        </p>
-      </div>
-    </div>
-  );
-}
-```
+Run: `npm run build`
+Expected: `/regras` compila.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/app/regras/page.tsx src/app/regras/actions.ts
-git commit -m "feat: regras com seletor competicao e exibicao de app_config
+git add src/app/regras/page.tsx
+git commit -m "feat: /regras com rotulo de competicao e nota da Copa condicional
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 13: Create `/perfil/competicoes` page for opt-in management
+## Task 10: Tela `/perfil/competicoes` (opt-in/opt-out)
 
 **Files:**
 - Create: `src/app/perfil/competicoes/page.tsx`
 - Create: `src/app/perfil/competicoes/actions.ts`
 
 **Interfaces:**
-- Consumes: User auth, `profiles_competicoes` table
-- Produces: 
-  - Page lists all active competitions + competitions user participated in
-  - Toggle buttons to opt-in/opt-out
-  - Server actions `toggleCompeticao(competicaoId, ativo)` to upsert in DB
+- Consumes: `listarCompeticoes` (Task 4); auth via `supabase.auth.getUser()`
+- Produces:
+  - `alternarParticipacao(competicaoId: string, ativo: boolean)` — server action que faz upsert em `profiles_competicoes(user_id, competicao_id, ativo)` (onConflict `user_id,competicao_id`) e `revalidatePath("/perfil/competicoes")`. Erro → `{ erro }`.
+  - Página lista todas as competições com o estado atual de participação do usuário e um botão/toggle por competição (form + server action). Marca "Ativa"/"Encerrada".
 
-- [ ] **Step 1: Create server actions**
+- [ ] **Step 1: `actions.ts`**
 
 ```typescript
 // src/app/perfil/competicoes/actions.ts
-'use server';
+"use server";
 
-import { createServerClient } from '@/lib/supabase/server';
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
 
-export async function fetchUserCompeticoes() {
-  const supabase = await createServerClient();
-  const user = (await supabase.auth.getUser()).data.user;
-  
-  if (!user) throw new Error('Not authenticated');
-
-  const { data, error } = await supabase
-    .from('competicoes')
-    .select(`
-      *,
-      profiles_competicoes!left(ativo)
-    `)
-    .order('ordem');
-
-  if (error) throw error;
-  return data;
-}
-
-export async function toggleCompeticao(competicaoId: string, ativo: boolean) {
-  const supabase = await createServerClient();
-  const user = (await supabase.auth.getUser()).data.user;
-  
-  if (!user) throw new Error('Not authenticated');
+export async function alternarParticipacao(competicaoId: string, ativo: boolean) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { erro: "Faça login." };
 
   const { error } = await supabase
-    .from('profiles_competicoes')
-    .upsert({
-      user_id: user.id,
-      competicao_id: competicaoId,
-      ativo
-    }, {
-      onConflict: 'user_id,competicao_id'
-    });
+    .from("profiles_competicoes")
+    .upsert(
+      { user_id: user.id, competicao_id: competicaoId, ativo },
+      { onConflict: "user_id,competicao_id" }
+    );
 
-  if (error) throw error;
+  if (error) return { erro: "Não foi possível salvar." };
+  revalidatePath("/perfil/competicoes");
+  return { ok: true };
 }
 ```
 
-- [ ] **Step 2: Create page component**
+- [ ] **Step 2: `page.tsx`** (server component; estado de participação lido direto)
 
-```typescript
+```tsx
 // src/app/perfil/competicoes/page.tsx
-'use client';
+import { redirect } from "next/navigation";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
+import { getSessao } from "@/lib/auth/profile";
+import { createClient } from "@/lib/supabase/server";
+import { listarCompeticoes } from "@/lib/competicoes";
+import { alternarParticipacao } from "./actions";
 
-import { fetchUserCompeticoes, toggleCompeticao } from './actions';
-import { useEffect, useState } from 'react';
-import type { Competicao } from '@/lib/types';
+export default async function CompeticoesPage() {
+  const sessao = await getSessao();
+  if (!sessao) redirect("/entrar");
 
-interface CompeticaoComParticipacao extends Competicao {
-  profiles_competicoes?: { ativo: boolean }[] | null;
-}
-
-export default function CompeticopesPage() {
-  const [competicoes, setCompeticoes] = useState<CompeticaoComParticipacao[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchUserCompeticoes();
-        setCompeticoes(data);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const handleToggle = async (competicaoId: string, currentAtico: boolean) => {
-    try {
-      await toggleCompeticao(competicaoId, !currentAtico);
-      setCompeticoes(prev => prev.map(c => 
-        c.id === competicaoId 
-          ? { ...c, profiles_competicoes: [{ ativo: !currentAtico }] }
-          : c
-      ));
-    } catch (err) {
-      console.error('Erro ao alternar competição:', err);
-    }
-  };
+  const supabase = await createClient();
+  const [competicoes, { data: participacoes }] = await Promise.all([
+    listarCompeticoes(),
+    supabase.from("profiles_competicoes").select("competicao_id, ativo").eq("user_id", sessao.userId),
+  ]);
+  const ativoPor = new Map(
+    (participacoes as { competicao_id: string; ativo: boolean }[] | null ?? []).map((p) => [p.competicao_id, p.ativo])
+  );
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Minhas Competições</h1>
-        <p className="text-muted-foreground mt-2">
-          Ative ou desative sua participação nas competições
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
+      <SiteHeader />
+      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-10 sm:px-6">
+        <h1 className="mb-2 font-display text-3xl font-bold uppercase tracking-tight">
+          Minhas competições
+        </h1>
+        <p className="mb-8 text-muted-foreground">
+          Ative sua participação para palpitar e aparecer no ranking de cada competição.
         </p>
-      </div>
-
-      {loading && <div>Carregando...</div>}
-
-      <div className="space-y-3">
-        {competicoes.map(comp => {
-          const participando = comp.profiles_competicoes?.[0]?.ativo ?? false;
-          return (
-            <div 
-              key={comp.id} 
-              className="flex items-center justify-between rounded-lg border border-border p-4 hover:bg-muted/50"
-            >
-              <div>
-                <h3 className="font-medium">{comp.nome}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {comp.ativa ? 'Ativa' : 'Encerrada'}
-                </p>
-              </div>
-              <button
-                onClick={() => handleToggle(comp.id, participando)}
-                className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                  participando
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-              >
-                {participando ? 'Participando' : 'Ativar'}
-              </button>
-            </div>
-          );
-        })}
-      </div>
+        <ul className="flex flex-col gap-3">
+          {competicoes.map((c) => {
+            const participando = ativoPor.get(c.id) ?? false;
+            return (
+              <li key={c.id} className="flex items-center justify-between rounded-2xl border border-border bg-card p-5">
+                <div>
+                  <p className="font-display text-lg font-bold uppercase tracking-tight">{c.nome}</p>
+                  <p className="text-xs text-muted-foreground">{c.ativa ? "Ativa" : "Encerrada"}</p>
+                </div>
+                <form action={async () => { "use server"; await alternarParticipacao(c.id, !participando); }}>
+                  <button
+                    type="submit"
+                    className={`cursor-pointer rounded-lg px-4 py-2 font-display text-sm font-semibold uppercase tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      participando
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                        : "border border-border bg-background text-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {participando ? "Participando" : "Ativar"}
+                  </button>
+                </form>
+              </li>
+            );
+          })}
+        </ul>
+      </main>
+      <SiteFooter />
     </div>
   );
 }
 ```
 
-- [ ] **Step 3: Add link to this page from perfil (main profile page)**
+- [ ] **Step 3: Build**
 
-In `src/app/perfil/page.tsx`, add navigation to `/perfil/competicoes`:
-
-```typescript
-<nav className="space-y-2">
-  <a href="/perfil/competicoes" className="block px-4 py-2 rounded hover:bg-muted">
-    Minhas Competições
-  </a>
-  {/* ... other profile links ... */}
-</nav>
-```
+Run: `npm run build`
+Expected: rota compila.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/app/perfil/competicoes/page.tsx src/app/perfil/competicoes/actions.ts src/app/perfil/page.tsx
-git commit -m "feat: adicionar pagina /perfil/competicoes para opt-in management
+git add src/app/perfil/competicoes/
+git commit -m "feat: tela /perfil/competicoes para opt-in/opt-out
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 14: Manual testing, unit tests, and final build validation
+## Task 11: `sync-matches` — loop multi-competição
 
 **Files:**
-- N/A (testing and validation only)
+- Modify: `supabase/functions/sync-matches/index.ts`
 
 **Interfaces:**
-- Validation: All migrations apply, ranking queries work, UI renders, components integrate
+- Consumes: `competicoes` (`id, slug, fs_tournament_url, formato`), `sync_cache` (chave text), `matches.competicao_id`
+- Produces:
+  - A função busca `select id, slug, fs_tournament_url, formato from competicoes where ativa = true` e itera cada uma.
+  - Usa `fs_tournament_url` da linha no lugar do secret `FS_TOURNAMENT_URL` (fallback: se `fs_tournament_url` for null, usa o secret — compat).
+  - `formato = 'fases'`: mantém a detecção de stages atual (grupos/mata-mata).
+  - `formato = 'pontos-corridos'`: pula stages; `fase = 'pontos-corridos'`, `rodada` = número da rodada extraído da resposta de fixtures/results (confirmar o campo exato inspecionando a resposta real da FlashScore ao implementar).
+  - Todo upsert em `matches` inclui `competicao_id`.
+  - Chaves de `sync_cache` prefixadas: `${competicaoId}:<chave-antiga>`.
 
-- [ ] **Step 1: Apply migrations locally**
+**Nota ao implementer:** este é o arquivo mais complexo. Leia-o inteiro primeiro. Preserve o tratamento existente de 429/quota/timeout e o cache de stages — apenas parametrize por competição. NÃO reescreva a lógica de pontuação/decisão (90min/prorrogação); ela é ortogonal.
 
-```bash
-cd supabase && npx supabase db push
+- [ ] **Step 1: Ler o arquivo inteiro e mapear pontos de acoplamento**
+
+Run: `wc -l supabase/functions/sync-matches/index.ts` e leia-o.
+Identifique: onde `FS_TOURNAMENT_URL` é lido; onde `sync_cache` é lido/escrito (chaves); todos os `.from("matches").upsert/insert/update`; onde stages são detectados.
+
+- [ ] **Step 2: Extrair a lógica de uma competição para `syncCompeticao(comp)`**
+
+Envolva o corpo atual numa função que recebe `{ id, slug, fs_tournament_url, formato }`. No handler principal:
+
+```typescript
+const { data: competicoes, error } = await supabase
+  .from("competicoes")
+  .select("id, slug, fs_tournament_url, formato")
+  .eq("ativa", true);
+if (error) throw error;
+
+for (const comp of competicoes ?? []) {
+  await syncCompeticao(comp);  // sequencial: preserva rate-limit atual
+}
 ```
 
-Expected: All 5 new migrations (0019-0023) apply successfully.
+- [ ] **Step 3: Parametrizar URL, cache e upserts**
 
-- [ ] **Step 2: Run Postgres tests manually in Supabase Studio**
+- URL: `const url = comp.fs_tournament_url ?? Deno.env.get("FS_TOURNAMENT_URL");`
+- Cache: toda chave vira `` `${comp.id}:${chaveAntiga}` `` nas chamadas a `sync_cache`.
+- Upserts de `matches`: adicionar `competicao_id: comp.id` no objeto.
+- Stages: `if (comp.formato === "fases") { /* detecção atual */ } else { fase = "pontos-corridos"; rodada = <extraído da fixture>; }`
 
-Test each query:
+- [ ] **Step 4: Validar sintaxe (Deno)**
 
-```sql
--- Test 1: ranking(competicao_copa, 'geral') does not include Brasileirão matches
-select id, time_casa, competicao_id from matches order by competicao_id;
+Run: `deno check supabase/functions/sync-matches/index.ts` (se deno disponível) — senão, revisão manual + `npx supabase functions deploy sync-matches --no-verify-jwt` fica para o passo de deploy manual do usuário.
+Expected: sem erros de tipo.
 
--- Test 2: palpite_aberto respects competition's minutos_corte
-select palpite_aberto(id) from matches limit 1;
-
--- Test 3: Verify sync cache function signatures
-select sync_cache_exists('fake-comp-id'::uuid, 'test-key');
-```
-
-- [ ] **Step 3: Run unit tests**
+- [ ] **Step 5: Commit**
 
 ```bash
-npm test
-```
-
-Expected: All existing tests pass, new component tests pass (Task 7).
-
-- [ ] **Step 4: Build production bundle**
-
-```bash
-npm run build
-```
-
-Expected: Zero errors, type checking passes.
-
-- [ ] **Step 5: Manual feature test in browser**
-
-1. Navigate to `/palpites` — should see CompeticaoSelector dropdown
-2. Select Brasileirão — should show opt-in card if not enrolled
-3. Navigate to `/perfil/competicoes` — toggle Brasileirão to active
-4. Back to `/palpites` — should now show Brasileirão matches (if any synced)
-5. Navigate to `/ranking` — select Brasileirão, verify empty or populated correctly
-6. Navigate to `/ranking`, select Copa — should show existing Copa ranking
-7. Navigate to `/regras` — switch between Copa/Brasileirão, verify config values change
-8. Test localStorage persistence: refresh page, verify selected competition persists
-9. Test dark theme: toggle dark mode, verify CompeticaoSelector and forms look correct
-
-- [ ] **Step 6: Verify Flashscore sync (once fs_tournament_url is set in DB)**
-
-If Flashscore URLs are available, manually trigger sync via Supabase edge function dashboard or wait for cron. Verify:
-- Brasileirão matches appear in DB with `competicao_id` pointing to Brasileirão
-- Copa matches don't re-sync (already marked inactive)
-- `matches.rodada` reflects actual rodada for Brasileirão
-
-- [ ] **Step 7: Commit final validation (no code changes)**
-
-```bash
-git commit --allow-empty -m "test: validacao manual multi-competicao completa
-
-- Migrations aplicadas com sucesso
-- npm test: PASS
-- npm run build: PASS
-- Feature test: PASS (seletor, opt-in, ranking, regras, persistencia)
-- Dark theme: OK
+git add supabase/functions/sync-matches/index.ts
+git commit -m "refactor: sync-matches loop multi-competicao (formato fases/pontos-corridos)
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Summary
+## Task 12: Validação final (migrations, testes, build, fumaça)
 
-This plan implements multi-competition support in 14 tasks:
+**Files:** nenhum (validação).
 
-1. **Schema** (Tasks 1–5): New `competicoes` table, `matches.competicao_id`, `app_config` per-competition, `ranking()` with competition filtering, cache namespacing
-2. **Backend** (Task 8): Generalize `sync-matches` to loop and support multiple tournament formats
-3. **Frontend** (Tasks 6–7, 9–13): Types, hooks, selector component, integration into all pages, opt-in management UI
-4. **Validation** (Task 14): Testing and build
+- [ ] **Step 1: Aplicar migrations**
 
-Each task commits independently and can be reviewed and tested on its own. By the end, the system supports running Copa do Mundo 2026 (archived, visible in history) and Brasileirão 2026 (active, new ranking) simultaneously with separate opt-in, config, and sync.
+Run: `npx supabase db push` (ou via MCP `apply_migration` por arquivo, 0019→0021).
+Expected: 0019, 0020, 0021 aplicam sem erro.
+
+- [ ] **Step 2: Sanidade SQL** (Supabase Studio / execute_sql)
+
+```sql
+-- competições existem e Copa tem os jogos
+select slug, ativa, (select count(*) from matches m where m.competicao_id = c.id) as jogos
+from competicoes c order by ordem;
+
+-- ranking da Copa não mistura Brasileirão; assinatura nova funciona
+select count(*) from ranking((select id from competicoes where slug='copa-mundo-2026'), 'geral');
+select count(*) from ranking((select id from competicoes where slug='brasileirao-2026'), 'geral');
+
+-- opt-in retroativo cobriu quem palpitou na Copa
+select count(*) from profiles_competicoes
+where competicao_id = (select id from competicoes where slug='copa-mundo-2026') and ativo;
+```
+Expected: Copa com jogos > 0; Brasileirão ranking 0 (sem jogos/opt-in ainda); opt-in retroativo > 0.
+
+- [ ] **Step 3: Testes**
+
+Run: `npm test`
+Expected: todos passam (incl. `competicoes`, `competicao-selector`, e os existentes).
+
+- [ ] **Step 4: Build**
+
+Run: `npm run build`
+Expected: zero erros de tipo (todos os chamadores de `listarRanking`/`listarJogos` já atualizados).
+
+- [ ] **Step 5: Fumaça no browser** (`npm run dev`)
+
+1. Header mostra o seletor de competição (2 opções) + "Minhas competições".
+2. `/ranking` default = Brasileirão; sem SeasonSelector. Trocar para Copa → SeasonSelector T1/T2/Geral aparece e o pódio da Copa carrega.
+3. Trocar competição no header e recarregar (F5) → seleção persiste (cookie).
+4. `/perfil/competicoes` → "Ativar" Brasileirão; voltar a `/jogos` → some o card de opt-in (mostra jogos ou "nenhum jogo" se sync ainda não rodou).
+5. `/regras`: Brasileirão sem a nota de Temporada 1/2; Copa com a nota.
+6. Dark e light: seletor e card de opt-in legíveis em ambos.
+
+- [ ] **Step 6: Commit de validação**
+
+```bash
+git commit --allow-empty -m "test: validacao multi-competicao (migrations, npm test, build, fumaca)
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Resumo
+
+12 tarefas: **3 migrations** (competições+FK / opt-in / ranking), **1 lib** (tipos + threading), **1 componente** (seletor), **5 integrações de página** (header+ranking, jogos, histórico, regras, tela de opt-in), **1 Edge Function** (sync loop) e **validação**. `app_config`/`recalcular_pontos` intocados. Cada task commita sozinha; ao fim, Copa arquivada e Brasileirão ativo coexistem com rankings, opt-in, sync e seletor por cookie.

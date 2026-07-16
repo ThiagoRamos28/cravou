@@ -62,20 +62,20 @@ insert into public.competicoes (slug, nome, formato, ativa, ordem) values
 (Copa marcada `ativa = false` pois terminou — não entra mais na sync automática, mas
 continua consultável no ranking/histórico.)
 
-### 2. `app_config` por competição
+### 2. `app_config` permanece global (decisão revisada — YAGNI)
 
-```sql
-alter table public.app_config drop constraint app_config_pkey;
-alter table public.app_config add column competicao_id uuid references public.competicoes (id);
-alter table public.app_config add primary key (competicao_id, chave);
-```
+**Nada muda em `app_config`.** O usuário confirmou que o Brasileirão usa **as mesmas
+regras** da Copa (Modelo A: 15/7/4/1, corte 10 min). A função `recalcular_pontos`
+(migration 0018) já escolhe o modelo **pela data do jogo**: tudo em/após `2026-07-04`
+usa o `app_config` global vigente = 15/7/4/1. Como **todos os jogos do Brasileirão são
+posteriores a 04/07**, eles já recebem o Modelo A automaticamente, sem qualquer alteração
+em `app_config`, `recalcular_pontos`, o trigger ou `pontos_palpite`.
 
-Linhas existentes (`minutos_corte`, `pts_placar_exato`, `pts_resultado`, e as chaves do
-Modelo A já usadas pela T2 — `pts_saldo`, `pts_time_marca`, conforme migration 0018) são
-copiadas para a Copa e duplicadas com os mesmos valores para o Brasileirão (mesma regra,
-"mesmas regras" conforme pedido). `palpite_aberto(match_id)` passa a resolver
-`competicao_id` a partir do próprio `match_id` (join com `matches`) em vez de ler
-`app_config` sem filtro.
+Tornar `app_config` por-competição agora quebraria os leitores existentes (`select valor
+from app_config where chave='...'` sem filtro passaria a retornar múltiplas linhas → erro
+"more than one row"). Fica **fora de escopo** — só se algum dia as competições precisarem
+divergir. `palpite_aberto(match_id)` e `getMinutosCorte()` continuam lendo o
+`minutos_corte` global, inalterados.
 
 ### 3. Participação opt-in
 
@@ -140,8 +140,9 @@ Comportamento:
 - Lista só competições com `ativa = true` **ou** onde o usuário tem
   `profiles_competicoes.ativo = true` (permite ver histórico/ranking de competições
   encerradas em que participou, como a Copa).
-- Seleção persiste em `localStorage` (`competicao_selecionada`), não em URL — mesma
-  decisão já tomada para o sub-filtro de temporada.
+- Seleção persiste em **cookie** (`competicao`), lido no servidor para que as páginas
+  (server components) já renderizem a competição certa sem flash nem round-trip. O
+  seletor (client component) grava o cookie e chama `router.refresh()`.
 - Default: primeira competição com `ativa = true` e maior `ordem` (Brasileirão).
 - Se o usuário seleciona uma competição em que ainda não fez opt-in, a página de
   palpites mostra um card "Você ainda não está participando do Brasileirão — Ativar" em
@@ -161,8 +162,9 @@ A Edge Function passa a:
    endpoint de fixtures/results da Flashscore (a determinar o campo exato ao implementar —
    Flashscore normalmente expõe isso em `round`/`stage_name` dos fixtures).
 5. Toda linha upsertada em `matches` grava `competicao_id` da competição da iteração
-   atual. Cache de IDs (`0015_sync_cache.sql`) passa a ser namespaced por `competicao_id`
-   para não colidir entre competições.
+   atual. O cache (`sync_cache`, cuja PK é `chave text`) é namespaced **prefixando a
+   chave** com o id/slug da competição (`${competicaoId}:tournament_stages`) — sem
+   alteração de schema, já que a chave é texto livre.
 6. Cron continua no mesmo intervalo — agora uma execução cobre todas as competições ativas
    em sequência (mesmo tratamento de 429/timeout já existente, por competição).
 
@@ -172,17 +174,23 @@ A Edge Function passa a:
 
 ### Novos
 - `supabase/migrations/0019_competicoes.sql` — tabela `competicoes`, `matches.competicao_id`, seed
-- `supabase/migrations/0020_app_config_por_competicao.sql` — `app_config.competicao_id`, `palpite_aberto` atualizado
-- `supabase/migrations/0021_profiles_competicoes.sql` — tabela de opt-in
-- `supabase/migrations/0022_ranking_por_competicao.sql` — `ranking(p_competicao_id, p_periodo)`
-- `src/components/competicao/competicao-selector.tsx`
-- `src/app/perfil/competicoes/page.tsx` (ou seção equivalente) — tela "Minhas competições"
+- `supabase/migrations/0020_profiles_competicoes.sql` — tabela de opt-in + opt-in retroativo Copa
+- `supabase/migrations/0021_ranking_por_competicao.sql` — `ranking(p_competicao_id, p_periodo)`
+- `src/lib/competicoes.ts` — tipo `Competicao`, `listarCompeticoes()`, `getCompeticaoAtiva(cookie)`, helper de cookie
+- `src/components/competicao/competicao-selector.tsx` — client, grava cookie + `router.refresh()`
+- `src/app/perfil/competicoes/page.tsx` + `actions.ts` — tela "Minhas competições" (opt-in)
 
 ### Modificados
-- `supabase/functions/sync-matches/index.ts` — loop por competição
-- `supabase/migrations/0015_sync_cache.sql` (ou nova migration) — cache namespaced por competição
-- `src/app/palpites/page.tsx`, `src/app/historico/page.tsx`, `src/app/ranking/page.tsx`, `src/app/regras/page.tsx` — integram o seletor
-- `src/components/ranking/season-selector.tsx` (da spec 04/07, a implementar) — passa a viver dentro do fluxo de competição, só visível quando `formato = 'fases'`
+- `supabase/functions/sync-matches/index.ts` — loop por competição, formato fases/pontos-corridos, cache com chave prefixada
+- `src/lib/ranking.ts` — `listarRanking(competicaoId, periodo)` chama `ranking(p_competicao_id, p_periodo)`
+- `src/lib/matches.ts` — `listarJogos` aceita `competicaoId` no filtro
+- `src/app/ranking/page.tsx` + `actions.ts` + `src/components/ranking/ranking-content.tsx` — competição via cookie; `SeasonSelector` só quando `formato = 'fases'`
+- `src/app/jogos/page.tsx` — filtra por competição; card de opt-in quando não participa
+- `src/app/historico/page.tsx` — filtra por competição
+- `src/app/regras/page.tsx` — nota de pontuação por competição selecionada (texto continua estático; só troca o rótulo Copa/Brasileirão)
+- `src/components/site-header.tsx` — abriga o `CompeticaoSelector` e link "Minhas competições"
+
+**Não alterados (decisão revisada):** `app_config`, `recalcular_pontos`, `pontos_palpite`, `palpite_aberto`, `getMinutosCorte` — modelo global por data já cobre o Brasileirão.
 
 ---
 
@@ -227,13 +235,14 @@ A Edge Function passa a:
 ## Checklist de entrega
 
 - [ ] Migration `competicoes` + `matches.competicao_id` + seed (Copa inativa, Brasileirão ativa)
-- [ ] Migration `app_config.competicao_id` + `palpite_aberto` atualizado + seed dos valores por competição
 - [ ] Migration `profiles_competicoes` + opt-in retroativo para participantes da Copa
-- [ ] Migration `ranking(p_competicao_id, p_periodo)`
-- [ ] `sync-matches` generalizado (loop por competição, formato fases/pontos-corridos, cache namespaced)
-- [ ] `CompeticaoSelector` implementado e integrado em palpites/histórico/ranking/regras
+- [ ] Migration `ranking(p_competicao_id, p_periodo)` + `listarRanking` atualizado
+- [ ] `sync-matches` generalizado (loop por competição, formato fases/pontos-corridos, cache com chave prefixada)
+- [ ] `CompeticaoSelector` (cookie + refresh) integrado no header
+- [ ] `listarJogos`/páginas jogos, histórico, ranking, regras filtram por competição
 - [ ] Tela "Minhas competições" (opt-in/opt-out)
 - [ ] Sub-seletor T1/T2/Geral só aparece para competições `formato = 'fases'`
-- [ ] Testes manuais: opt-in, troca de competição, corte de palpite por competição
+- [ ] `app_config`/`recalcular_pontos` **inalterados** (modelo global por data)
+- [ ] Testes manuais: opt-in, troca de competição, ranking separado Copa×Brasileirão
 - [ ] `npm test` passa
 - [ ] `npm run build` passa
