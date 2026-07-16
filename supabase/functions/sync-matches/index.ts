@@ -8,6 +8,7 @@ import {
   type MatchRow,
   type FsMatchDetails,
 } from "../_shared/fixtures.ts";
+import { espelharEscudo } from "../_shared/escudos.ts";
 
 const BLOCOS_GRUPOS = [
   { rodada: "1", ate: "2026-06-18T00:00:00.000Z" },
@@ -206,6 +207,15 @@ async function syncCompeticao(
     }
   }
   const rows = [...porId.values()];
+
+  // Espelha os escudos no nosso storage (evita o hotlink 403 da FlashScore). Falha aberta:
+  // se algum não espelhar, mantém a URL original. Dedup por run via `cacheEscudos`.
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const cacheEscudos = new Map<string, string>();
+  for (const r of rows) {
+    r.bandeira_casa = await espelharEscudo(supabase, supabaseUrl, r.bandeira_casa, cacheEscudos);
+    r.bandeira_fora = await espelharEscudo(supabase, supabaseUrl, r.bandeira_fora, cacheEscudos);
+  }
 
   const { data: manuais } = await supabase
     .from("matches")
