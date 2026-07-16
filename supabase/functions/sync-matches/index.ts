@@ -9,6 +9,7 @@ import {
   type FsMatchDetails,
 } from "../_shared/fixtures.ts";
 import { espelharEscudo } from "../_shared/escudos.ts";
+import { extrairOdds } from "../_shared/odds.ts";
 
 const BLOCOS_GRUPOS = [
   { rodada: "1", ate: "2026-06-18T00:00:00.000Z" },
@@ -228,7 +229,7 @@ async function syncCompeticao(
   const apiIds = paraUpsert.map((r) => r.api_fixture_id);
   const { data: existentes } = await supabase
     .from("matches")
-    .select("id, api_fixture_id, placar_casa, placar_fora, status, time_casa, time_fora")
+    .select("id, api_fixture_id, placar_casa, placar_fora, status, time_casa, time_fora, odds")
     .in("api_fixture_id", apiIds.length > 0 ? apiIds : ["__nenhum__"]);
 
   const mapaExistentes = new Map(
@@ -241,9 +242,47 @@ async function syncCompeticao(
         status: m.status as string,
         time_casa: m.time_casa as string,
         time_fora: m.time_fora as string,
+        odds: m.odds as unknown,
       },
     ])
   );
+
+  // Odds pré-jogo: 1x por jogo agendado que entra na janela (~2h antes) e ainda não tem odds.
+  // Snapshot único (não reatualiza). Lotes de 5 com delay, como o fetch de detalhes.
+  const ODDS_JANELA_MS = 2 * 60 * 60 * 1000; // 2h antes do início
+  const alvoOdds = paraUpsert.filter((r) => {
+    if (r.status !== "agendado") return false;
+    const t = new Date(r.inicio_em).getTime();
+    if (t < agora || t > agora + ODDS_JANELA_MS) return false;
+    return !mapaExistentes.get(r.api_fixture_id)?.odds;
+  });
+
+  const LOTE_ODDS = 5;
+  for (let i = 0; i < alvoOdds.length; i += LOTE_ODDS) {
+    const lote = alvoOdds.slice(i, i + LOTE_ODDS);
+    await Promise.all(
+      lote.map(async (r) => {
+        try {
+          const payload = await fsFetch(
+            `/api/flashscore/v2/matches/odds?match_id=${r.api_fixture_id}&geo_ip_code=BR`
+          );
+          const snap = extrairOdds(payload);
+          if (snap) r.odds = snap;
+        } catch (e) {
+          console.error(
+            JSON.stringify({
+              evento: "odds_erro",
+              api_fixture_id: r.api_fixture_id,
+              mensagem: e instanceof Error ? e.message : String(e),
+            })
+          );
+        }
+      })
+    );
+    if (i + LOTE_ODDS < alvoOdds.length) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
 
   // Para jogos que viram "finalizado" pela 1ª vez, busca o detalhe (placar 90min real)
   const transicoes = paraUpsert.filter((r) => {

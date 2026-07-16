@@ -45,6 +45,7 @@ export type FsMatchDetails = {
 
 export type MatchRow = {
   competicao_id?: string;
+  odds?: unknown; // OddsSnapshot | null — jsonb gravado no upsert
   api_fixture_id: string;
   time_casa: string;
   time_fora: string;
