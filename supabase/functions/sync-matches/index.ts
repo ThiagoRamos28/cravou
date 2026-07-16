@@ -284,6 +284,13 @@ async function syncCompeticao(
     }
   }
 
+  // Todo row do lote precisa carregar `odds`: o upsert em lote do PostgREST usa a união das
+  // chaves, então uma linha sem `odds` zeraria a coluna das demais. Preserva o snapshot
+  // recém-capturado; senão o valor já gravado no banco; senão null.
+  for (const r of paraUpsert) {
+    r.odds = r.odds ?? (mapaExistentes.get(r.api_fixture_id)?.odds ?? null);
+  }
+
   // Para jogos que viram "finalizado" pela 1ª vez, busca o detalhe (placar 90min real)
   const transicoes = paraUpsert.filter((r) => {
     if (r.status !== "finalizado") return false;
