@@ -25,10 +25,12 @@ export async function listarJogos(filtro?: {
   soEncerrados?: boolean;
   minutosCorte?: number;
   limite?: number;
+  competicaoId?: string;
 }): Promise<Match[]> {
   try {
     const supabase = await createClient();
     let q = supabase.from("matches").select(COLS).order("inicio_em", { ascending: true });
+    if (filtro?.competicaoId) q = q.eq("competicao_id", filtro.competicaoId);
     if (filtro?.fase) q = q.eq("fase", filtro.fase);
     if (filtro?.rodada) q = q.eq("rodada", filtro.rodada);
     if (filtro?.soEncerrados) q = q.eq("status", "finalizado");
