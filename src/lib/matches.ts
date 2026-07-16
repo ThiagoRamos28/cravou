@@ -1,6 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
 import { palpiteAberto } from "@/lib/palpites/corte";
 
+export type Odds = {
+  casa: string | null;
+  empate: string | null;
+  fora: string | null;
+  over25: string | null;
+  under25: string | null;
+  ambas_sim: string | null;
+  ambas_nao: string | null;
+  bookmaker: string;
+  capturado_em: string;
+};
+
 export type Match = {
   id: string;
   fase: string;
@@ -13,10 +25,11 @@ export type Match = {
   status: "agendado" | "ao_vivo" | "finalizado";
   placar_casa: number | null;
   placar_fora: number | null;
+  odds: Odds | null;
 };
 
 const COLS =
-  "id, fase, rodada, time_casa, time_fora, bandeira_casa, bandeira_fora, inicio_em, status, placar_casa, placar_fora";
+  "id, fase, rodada, time_casa, time_fora, bandeira_casa, bandeira_fora, inicio_em, status, placar_casa, placar_fora, odds";
 
 export async function listarJogos(filtro?: {
   fase?: string;
