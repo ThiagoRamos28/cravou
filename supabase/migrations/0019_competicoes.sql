@@ -13,9 +13,9 @@ create table if not exists public.competicoes (
   created_at timestamptz not null default now()
 );
 
-insert into public.competicoes (slug, nome, formato, ativa, ordem) values
-  ('copa-mundo-2026', 'Copa do Mundo 2026', 'fases', false, 1),
-  ('brasileirao-2026', 'Brasileirão Série A 2026', 'pontos-corridos', true, 2)
+insert into public.competicoes (slug, nome, formato, ativa, fs_tournament_url, ordem) values
+  ('copa-mundo-2026', 'Copa do Mundo 2026', 'fases', false, null, 1),
+  ('brasileirao-2026', 'Brasileirão Série A 2026', 'pontos-corridos', true, '/football/brazil/serie-a-betano/', 2)
 on conflict (slug) do nothing;
 
 alter table public.matches add column if not exists competicao_id uuid references public.competicoes (id);
