@@ -44,6 +44,7 @@ export type FsMatchDetails = {
 };
 
 export type MatchRow = {
+  competicao_id?: string;
   api_fixture_id: string;
   time_casa: string;
   time_fora: string;
