@@ -1,6 +1,14 @@
 import { Target, ArrowLeftRight, Trophy, CircleDot, XCircle } from "lucide-react";
+import { cookies } from "next/headers";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import {
+  listarCompeticoes,
+  meusOptIns,
+  competicoesVisiveis,
+  resolverCompeticao,
+  COOKIE_COMPETICAO,
+} from "@/lib/competicoes";
 
 const NIVEIS = [
   {
@@ -44,7 +52,16 @@ const NIVEIS = [
   },
 ];
 
-export default function RegrasPage() {
+export default async function RegrasPage() {
+  const [todas, optIns, cookieStore] = await Promise.all([
+    listarCompeticoes(),
+    meusOptIns(),
+    cookies(),
+  ]);
+  const visiveis = competicoesVisiveis(todas, optIns);
+  const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
+  const ehFases = atual?.formato === "fases";
+
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <SiteHeader />
@@ -52,13 +69,25 @@ export default function RegrasPage() {
         <h1 className="mb-2 font-display text-3xl font-bold uppercase tracking-tight">
           Regras de pontuação
         </h1>
+        {atual && (
+          <p className="mb-2 font-display text-sm font-semibold uppercase tracking-tight text-accent">
+            {atual.nome}
+          </p>
+        )}
         <p className="mb-10 text-muted-foreground">
           Cada palpite recebe os pontos da categoria mais alta que ele acertar.
           Os níveis são avaliados de cima para baixo — o primeiro que casar é o
-          que vale. Os valores abaixo são os da{" "}
-          <strong className="text-foreground">Temporada 2 — Mata-mata</strong>{" "}
-          (jogos a partir de 04/07/2026); veja a nota mais abaixo para os
-          valores da fase de grupos.
+          que vale.{" "}
+          {ehFases ? (
+            <>
+              Os valores abaixo são os da{" "}
+              <strong className="text-foreground">Temporada 2 — Mata-mata</strong>{" "}
+              (jogos a partir de 04/07/2026); veja a nota mais abaixo para os
+              valores da fase de grupos.
+            </>
+          ) : (
+            <>Os valores abaixo são os vigentes nesta competição.</>
+          )}
         </p>
 
         <ol className="flex flex-col gap-4">
@@ -97,35 +126,39 @@ export default function RegrasPage() {
           </p>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-5 text-sm text-muted-foreground">
-          <p className="mb-1 font-semibold text-foreground">
-            Mudança de pontuação em 04/07/2026
-          </p>
-          <p>
-            Os valores de pontos acima valem para a{" "}
-            <strong>Temporada 2 — Mata-mata</strong> (jogos a partir de
-            04/07/2026): placar exato 15 pts · vencedor e saldo 7 pts ·
-            resultado (V/E/D) 4 pts · gols de um time 1 pt.
-          </p>
-          <p className="mt-2">
-            Na <strong>Temporada 1 — Fase de grupos</strong> (jogos até
-            03/07/2026), os valores eram: placar exato 10 pts · vencedor e
-            saldo 7 pts · resultado (V/E/D) 5 pts · gols de um time 2 pts.
-          </p>
-          <p className="mt-2">
-            Os pontos já conquistados na fase de grupos permanecem como
-            estão — não há recálculo retroativo.
-          </p>
-        </div>
+        {ehFases && (
+          <>
+            <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-5 text-sm text-muted-foreground">
+              <p className="mb-1 font-semibold text-foreground">
+                Mudança de pontuação em 04/07/2026
+              </p>
+              <p>
+                Os valores de pontos acima valem para a{" "}
+                <strong>Temporada 2 — Mata-mata</strong> (jogos a partir de
+                04/07/2026): placar exato 15 pts · vencedor e saldo 7 pts ·
+                resultado (V/E/D) 4 pts · gols de um time 1 pt.
+              </p>
+              <p className="mt-2">
+                Na <strong>Temporada 1 — Fase de grupos</strong> (jogos até
+                03/07/2026), os valores eram: placar exato 10 pts · vencedor e
+                saldo 7 pts · resultado (V/E/D) 5 pts · gols de um time 2 pts.
+              </p>
+              <p className="mt-2">
+                Os pontos já conquistados na fase de grupos permanecem como
+                estão — não há recálculo retroativo.
+              </p>
+            </div>
 
-        <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-5 text-sm text-muted-foreground">
-          <p className="mb-1 font-semibold text-foreground">Jogos com prorrogação</p>
-          <p>
-            Na fase de mata-mata, a pontuação considera apenas o placar dos{" "}
-            <strong>90 minutos</strong> (tempo normal). Gols marcados na
-            prorrogação não contam para o palpite.
-          </p>
-        </div>
+            <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-5 text-sm text-muted-foreground">
+              <p className="mb-1 font-semibold text-foreground">Jogos com prorrogação</p>
+              <p>
+                Na fase de mata-mata, a pontuação considera apenas o placar dos{" "}
+                <strong>90 minutos</strong> (tempo normal). Gols marcados na
+                prorrogação não contam para o palpite.
+              </p>
+            </div>
+          </>
+        )}
       </main>
       <SiteFooter />
     </div>
