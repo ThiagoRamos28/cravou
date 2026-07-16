@@ -2,6 +2,7 @@ import { traduzirPais } from "@/lib/i18n/paises";
 import type { Match } from "@/lib/matches";
 import type { Prediction } from "@/lib/predictions";
 import { PalpiteForm } from "@/components/jogos/palpite-form";
+import { OddsJogo } from "@/components/jogos/odds-jogo";
 
 function Time({
   nome,
@@ -103,6 +104,7 @@ export function MatchCard({
         />
       </div>
       <PalpiteForm match={match} palpite={palpite} minutosCorte={minutosCorte} />
+      {match.odds && match.status !== "finalizado" && <OddsJogo odds={match.odds} />}
     </article>
   );
 }
