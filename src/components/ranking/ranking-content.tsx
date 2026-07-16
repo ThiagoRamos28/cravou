@@ -7,6 +7,7 @@ import { RankingListaMobile } from "@/components/ranking/ranking-lista-mobile";
 import { SeasonSelector } from "@/components/ranking/season-selector";
 import { buscarRanking } from "@/app/ranking/actions";
 import type { RankingPeriodo, RankingRow } from "@/lib/ranking";
+import type { Competicao } from "@/lib/competicoes";
 
 function PodiumSkeleton() {
   return (
@@ -27,9 +28,11 @@ function TableSkeleton() {
 export function RankingContent({
   linhasIniciais,
   meuId,
+  competicao,
 }: {
   linhasIniciais: RankingRow[];
   meuId: string;
+  competicao: Competicao;
 }) {
   const [periodo, setPeriodo] = useState<RankingPeriodo>("geral");
   const [linhas, setLinhas] = useState<RankingRow[]>(linhasIniciais);
@@ -41,7 +44,7 @@ export function RankingContent({
     periodoAtualRef.current = novoPeriodo;
     setCarregando(true);
     try {
-      const resultado = await buscarRanking(novoPeriodo);
+      const resultado = await buscarRanking(competicao.id, novoPeriodo);
       if (periodoAtualRef.current === novoPeriodo) {
         setLinhas(resultado);
       }
@@ -56,7 +59,9 @@ export function RankingContent({
 
   return (
     <div>
-      <SeasonSelector periodo={periodo} onChange={aoTrocarPeriodo} />
+      {competicao.formato === "fases" && (
+        <SeasonSelector periodo={periodo} onChange={aoTrocarPeriodo} />
+      )}
       {carregando ? (
         <>
           <PodiumSkeleton />

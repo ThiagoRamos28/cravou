@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { COOKIE_COMPETICAO, type Competicao } from "@/lib/competicoes";
+import { COOKIE_COMPETICAO, type Competicao } from "@/lib/competicoes-shared";
 
 export function CompeticaoSelector({
   competicoes,

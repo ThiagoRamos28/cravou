@@ -1,15 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { COOKIE_COMPETICAO, type Competicao } from "@/lib/competicoes-shared";
 
-export type Competicao = {
-  id: string;
-  slug: string;
-  nome: string;
-  formato: "fases" | "pontos-corridos";
-  ativa: boolean;
-  ordem: number;
-};
-
-export const COOKIE_COMPETICAO = "competicao";
+export type { Competicao };
+export { COOKIE_COMPETICAO };
 
 const COLS = "id, slug, nome, formato, ativa, ordem";
 
