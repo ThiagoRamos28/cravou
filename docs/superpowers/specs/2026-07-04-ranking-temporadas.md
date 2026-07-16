@@ -1,4 +1,4 @@
-# Ranking com Temporadas Separadas (Temporada 1 + Temporada 2 + Geral)
+'# Ranking com Temporadas Separadas (Temporada 1 + Temporada 2 + Geral)
 
 ## Contexto
 
