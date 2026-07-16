@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MatchCard } from "@/components/jogos/match-card";
-import type { Match } from "@/lib/matches";
+import type { Match, Odds } from "@/lib/matches";
 import type { Prediction } from "@/lib/predictions";
 
 // PalpiteForm agora usa useToast — mockar para evitar erro de contexto.
@@ -21,6 +21,19 @@ const base: Match = {
   status: "agendado",
   placar_casa: null,
   placar_fora: null,
+  odds: null,
+};
+
+const oddsFixture: Odds = {
+  casa: "1.50",
+  empate: "3.20",
+  fora: "5.00",
+  over25: "1.80",
+  under25: "2.00",
+  ambas_sim: "1.70",
+  ambas_nao: "2.10",
+  bookmaker: "Bet365",
+  capturado_em: "2026-06-20T17:00:00+00:00",
 };
 
 describe("MatchCard", () => {
@@ -93,5 +106,30 @@ describe("MatchCard", () => {
     );
     const article = container.querySelector("article");
     expect(article?.className).toContain("border-primary");
+  });
+
+  it("mostra 'ver odds' quando agendado e com odds", () => {
+    render(<MatchCard match={{ ...base, status: "agendado", odds: oddsFixture }} />);
+    expect(screen.getByText("ver odds")).toBeInTheDocument();
+  });
+
+  it("não mostra 'ver odds' quando finalizado, mesmo com odds", () => {
+    render(
+      <MatchCard
+        match={{
+          ...base,
+          status: "finalizado",
+          placar_casa: 2,
+          placar_fora: 0,
+          odds: oddsFixture,
+        }}
+      />
+    );
+    expect(screen.queryByText("ver odds")).not.toBeInTheDocument();
+  });
+
+  it("não mostra 'ver odds' quando agendado sem odds", () => {
+    render(<MatchCard match={{ ...base, status: "agendado", odds: null }} />);
+    expect(screen.queryByText("ver odds")).not.toBeInTheDocument();
   });
 });

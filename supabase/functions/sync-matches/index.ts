@@ -8,6 +8,8 @@ import {
   type MatchRow,
   type FsMatchDetails,
 } from "../_shared/fixtures.ts";
+import { espelharEscudo } from "../_shared/escudos.ts";
+import { extrairOdds } from "../_shared/odds.ts";
 
 const BLOCOS_GRUPOS = [
   { rodada: "1", ate: "2026-06-18T00:00:00.000Z" },
@@ -80,8 +82,17 @@ type TournamentIds = {
   tournament_stages: TournamentStage[];
 };
 
-// IDs/stages do torneio não mudam durante a Copa. Cacheia em sync_cache para não bater em
+// Competição ativa a sincronizar. `fs_tournament_url` vem da linha (fallback: secret legado).
+type Competicao = {
+  id: string;
+  slug: string;
+  fs_tournament_url: string | null;
+  formato: "fases" | "pontos-corridos";
+};
+
+// IDs/stages do torneio não mudam durante a temporada. Cacheia em sync_cache para não bater em
 // /tournaments/ids toda run (endpoint que estava tomando 429 e derrubando a sync inteira).
+// A chave é prefixada por competição para não colidir entre torneios.
 const CACHE_STAGES_KEY = "tournament_stages";
 const CACHE_STAGES_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
@@ -96,12 +107,14 @@ const REFRESH_KEY = "ultimo_refresh";
 const REFRESH_INTERVALO_MS = 12 * 60 * 60 * 1000; // 12h
 
 async function descobrirStages(
-  supabase: ReturnType<typeof createClient>
+  supabase: ReturnType<typeof createClient>,
+  comp: Competicao
 ): Promise<TournamentIds> {
+  const chaveCache = `${comp.id}:${CACHE_STAGES_KEY}`;
   const { data: cache } = await supabase
     .from("sync_cache")
     .select("valor, atualizado_em")
-    .eq("chave", CACHE_STAGES_KEY)
+    .eq("chave", chaveCache)
     .maybeSingle();
 
   if (cache) {
@@ -111,9 +124,12 @@ async function descobrirStages(
     }
   }
 
-  const url = Deno.env.get("FS_TOURNAMENT_URL");
+  // URL da competição; fallback para o secret legado (compat com a Copa pré-multi-competição).
+  const url = comp.fs_tournament_url ?? Deno.env.get("FS_TOURNAMENT_URL");
   if (!url) {
-    throw new Error("FS_TOURNAMENT_URL não configurado (secret ausente na Edge Function)");
+    throw new Error(
+      `fs_tournament_url ausente para competição ${comp.slug} (e secret FS_TOURNAMENT_URL não configurado)`
+    );
   }
   const data = (await fsFetch(
     `/api/flashscore/v2/tournaments/ids?tournament_url=${encodeURIComponent(url)}`
@@ -122,7 +138,7 @@ async function descobrirStages(
   await supabase
     .from("sync_cache")
     .upsert(
-      { chave: CACHE_STAGES_KEY, valor: data, atualizado_em: new Date().toISOString() },
+      { chave: chaveCache, valor: data, atualizado_em: new Date().toISOString() },
       { onConflict: "chave" }
     );
 
@@ -147,110 +163,59 @@ async function fsGetDetails(matchId: string): Promise<FsMatchDetails> {
   return data as FsMatchDetails;
 }
 
-Deno.serve(async (req) => {
-  const segredo = req.headers.get("x-cron-secret");
-  if (!segredo || segredo !== Deno.env.get("CRON_SECRET")) {
-    return new Response(JSON.stringify({ ok: false, erro: "não autorizado" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+type SyncResumo = { total: number; upserted: number; pulados_manual: number };
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+// Sincroniza uma competição: ingere fixtures/results, resolve placar de 90min nas transições
+// para "finalizado" e resgata jogos "no limbo". Lança RateLimitError (429) ou Error em falha —
+// quem chama decide como responder. Todo upsert carrega `competicao_id`.
+async function syncCompeticao(
+  supabase: ReturnType<typeof createClient>,
+  comp: Competicao,
+  agora: number
+): Promise<SyncResumo> {
+  const ids = await descobrirStages(supabase, comp);
+  const porId = new Map<string, MatchRow>();
 
-  // Janela de jogo: só faz sentido bater na API quando há jogo relevante — algum começando
-  // em breve, em andamento, ou já vencido mas ainda sem placar (`agendado` que já passou).
-  // Fora disso, pula a run (economiza a maior parte das ~96 runs/dia e poupa a quota da API).
-  const agora = Date.now();
-  const JANELA_ANTES_MS = 2 * 60 * 60 * 1000; // 2h antes do início
-  const JANELA_DEPOIS_MS = 4 * 60 * 60 * 1000; // até 4h depois (cobre prorrogação/atrasos)
-  const inicioMin = new Date(agora - JANELA_DEPOIS_MS).toISOString();
-  const inicioMax = new Date(agora + JANELA_ANTES_MS).toISOString();
+  // Copa (fases): só grupos ("Main") e mata-mata ("Play Offs"). Pontos-corridos: um único
+  // stream de rodadas — não filtra por nome de stage.
+  const stages =
+    comp.formato === "fases"
+      ? ids.tournament_stages.filter((s) => STAGES_RELEVANTES.has(s.name))
+      : ids.tournament_stages;
 
-  const { data: naJanela } = await supabase
-    .from("matches")
-    .select("id")
-    .eq("status", "agendado")
-    .gte("inicio_em", inicioMin)
-    .lte("inicio_em", inicioMax)
-    .limit(1);
-
-  const { data: vencidos } = await supabase
-    .from("matches")
-    .select("id")
-    .eq("status", "agendado")
-    .lt("inicio_em", inicioMin)
-    .limit(1);
-
-  const temJogo = (naJanela?.length ?? 0) > 0;
-  // `vencidos` (agendados que já começaram há mais de 4h e continuam sem placar) força a run
-  // mesmo fora da janela, para recuperar jogos que a API demorou a mover para "results".
-  const temPendente = (vencidos?.length ?? 0) > 0;
-
-  // Refresh periódico: força a run se o último refresh completo foi há mais de 12h, para
-  // ingerir jogos novos mesmo em dias sem partida na janela.
-  const { data: refreshCache } = await supabase
-    .from("sync_cache")
-    .select("atualizado_em")
-    .eq("chave", REFRESH_KEY)
-    .maybeSingle();
-  const deveRefrescar =
-    !refreshCache ||
-    agora - new Date(refreshCache.atualizado_em as string).getTime() > REFRESH_INTERVALO_MS;
-
-  if (!temJogo && !temPendente && !deveRefrescar) {
-    return new Response(JSON.stringify({ ok: true, pulado: "sem jogo na janela" }), {
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  let rows: MatchRow[];
-  try {
-    const ids = await descobrirStages(supabase);
-    const porId = new Map<string, MatchRow>();
-
-    const stagesRelevantes = ids.tournament_stages.filter((s) =>
-      STAGES_RELEVANTES.has(s.name)
-    );
-    for (const stage of stagesRelevantes) {
-      const fase = stage.name === "Main" ? "grupos" : "mata-mata";
-      const [fixtures, results] = await Promise.all([
-        fsGetLista("fixtures", ids.tournament_template_id, ids.season_id, stage.tournament_stage_id),
-        fsGetLista("results", ids.tournament_template_id, ids.season_id, stage.tournament_stage_id),
-      ]);
-      for (const f of fixtures) {
-        const ff = f as { match_id: string; timestamp: number };
-        const rodada = fase === "grupos" ? rodadaGrupos(ff.timestamp) : "";
-        porId.set(ff.match_id, fixtureToRow(f as never, fase, rodada));
-      }
-      for (const r of results) {
-        const rr = r as { match_id: string; timestamp: number };
-        const rodada = fase === "grupos" ? rodadaGrupos(rr.timestamp) : "";
-        porId.set(rr.match_id, resultToRow(r as never, fase, rodada));
-      }
+  for (const stage of stages) {
+    const fase =
+      comp.formato === "fases"
+        ? stage.name === "Main"
+          ? "grupos"
+          : "mata-mata"
+        : "pontos-corridos";
+    const [fixtures, results] = await Promise.all([
+      fsGetLista("fixtures", ids.tournament_template_id, ids.season_id, stage.tournament_stage_id),
+      fsGetLista("results", ids.tournament_template_id, ids.season_id, stage.tournament_stage_id),
+    ]);
+    for (const f of fixtures) {
+      const ff = f as { match_id: string; timestamp: number };
+      // rodada só é derivada por data na fase de grupos da Copa; nos demais formatos vem
+      // depois (mata-mata via detalhes) ou fica vazia (pontos-corridos).
+      const rodada = fase === "grupos" ? rodadaGrupos(ff.timestamp) : "";
+      porId.set(ff.match_id, { ...fixtureToRow(f as never, fase, rodada), competicao_id: comp.id });
     }
-    rows = [...porId.values()];
-  } catch (e) {
-    // Rate limit: não é falha de código nem transitória. Loga como aviso e responde 200 para
-    // o cron não reenfileirar/acumular erro; a próxima janela tenta de novo.
-    if (e instanceof RateLimitError) {
-      console.warn(JSON.stringify({ evento: "rate_limit", path: e.path }));
-      return new Response(JSON.stringify({ ok: false, motivo: "429", path: e.path }), {
-        headers: { "Content-Type": "application/json" },
-      });
+    for (const r of results) {
+      const rr = r as { match_id: string; timestamp: number };
+      const rodada = fase === "grupos" ? rodadaGrupos(rr.timestamp) : "";
+      porId.set(rr.match_id, { ...resultToRow(r as never, fase, rodada), competicao_id: comp.id });
     }
-    const erro = {
-      mensagem: e instanceof Error ? e.message : String(e),
-      stack: e instanceof Error ? e.stack : undefined,
-    };
-    console.error(JSON.stringify({ evento: "sync_erro", ...erro }));
-    return new Response(JSON.stringify({ ok: false, erro: erro.mensagem }), {
-      status: 502,
-      headers: { "Content-Type": "application/json" },
-    });
+  }
+  const rows = [...porId.values()];
+
+  // Espelha os escudos no nosso storage (evita o hotlink 403 da FlashScore). Falha aberta:
+  // se algum não espelhar, mantém a URL original. Dedup por run via `cacheEscudos`.
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const cacheEscudos = new Map<string, string>();
+  for (const r of rows) {
+    r.bandeira_casa = await espelharEscudo(supabase, supabaseUrl, r.bandeira_casa, cacheEscudos);
+    r.bandeira_fora = await espelharEscudo(supabase, supabaseUrl, r.bandeira_fora, cacheEscudos);
   }
 
   const { data: manuais } = await supabase
@@ -264,7 +229,7 @@ Deno.serve(async (req) => {
   const apiIds = paraUpsert.map((r) => r.api_fixture_id);
   const { data: existentes } = await supabase
     .from("matches")
-    .select("id, api_fixture_id, placar_casa, placar_fora, status, time_casa, time_fora")
+    .select("id, api_fixture_id, placar_casa, placar_fora, status, time_casa, time_fora, odds")
     .in("api_fixture_id", apiIds.length > 0 ? apiIds : ["__nenhum__"]);
 
   const mapaExistentes = new Map(
@@ -277,9 +242,54 @@ Deno.serve(async (req) => {
         status: m.status as string,
         time_casa: m.time_casa as string,
         time_fora: m.time_fora as string,
+        odds: m.odds as unknown,
       },
     ])
   );
+
+  // Odds pré-jogo: 1x por jogo agendado que entra na janela (~2h antes) e ainda não tem odds.
+  // Snapshot único (não reatualiza). Lotes de 5 com delay, como o fetch de detalhes.
+  const ODDS_JANELA_MS = 2 * 60 * 60 * 1000; // 2h antes do início
+  const alvoOdds = paraUpsert.filter((r) => {
+    if (r.status !== "agendado") return false;
+    const t = new Date(r.inicio_em).getTime();
+    if (t < agora || t > agora + ODDS_JANELA_MS) return false;
+    return !mapaExistentes.get(r.api_fixture_id)?.odds;
+  });
+
+  const LOTE_ODDS = 5;
+  for (let i = 0; i < alvoOdds.length; i += LOTE_ODDS) {
+    const lote = alvoOdds.slice(i, i + LOTE_ODDS);
+    await Promise.all(
+      lote.map(async (r) => {
+        try {
+          const payload = await fsFetch(
+            `/api/flashscore/v2/matches/odds?match_id=${r.api_fixture_id}&geo_ip_code=BR`
+          );
+          const snap = extrairOdds(payload);
+          if (snap) r.odds = snap;
+        } catch (e) {
+          console.error(
+            JSON.stringify({
+              evento: "odds_erro",
+              api_fixture_id: r.api_fixture_id,
+              mensagem: e instanceof Error ? e.message : String(e),
+            })
+          );
+        }
+      })
+    );
+    if (i + LOTE_ODDS < alvoOdds.length) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  // Todo row do lote precisa carregar `odds`: o upsert em lote do PostgREST usa a união das
+  // chaves, então uma linha sem `odds` zeraria a coluna das demais. Preserva o snapshot
+  // recém-capturado; senão o valor já gravado no banco; senão null.
+  for (const r of paraUpsert) {
+    r.odds = r.odds ?? (mapaExistentes.get(r.api_fixture_id)?.odds ?? null);
+  }
 
   // Para jogos que viram "finalizado" pela 1ª vez, busca o detalhe (placar 90min real)
   const transicoes = paraUpsert.filter((r) => {
@@ -331,10 +341,7 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error(JSON.stringify({ evento: "sync_upsert_erro", mensagem: error.message }));
-      return new Response(JSON.stringify({ ok: false, erro: error.message }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      throw new Error(error.message);
     }
 
     const mudancas = comTimestamp
@@ -390,7 +397,7 @@ Deno.serve(async (req) => {
   // intervalo o jogo já saiu de `fixtures` mas ainda não entrou em `results` — fica invisível
   // para o fluxo normal e o placar nunca atualiza sozinho. Aqui pegamos os `agendado` cujo
   // horário já passou e que NÃO vieram em nenhuma das listas, e consultamos `matches/details`
-  // diretamente (fonte que já tem o resultado na hora).
+  // diretamente (fonte que já tem o resultado na hora). Escopo: só desta competição.
   const idsNasListas = new Set(rows.map((r) => r.api_fixture_id));
   const RESGATE_APOS_MS = 100 * 60 * 1000; // ~100min após o início: 90min + intervalo + folga
   const limiteResgate = new Date(agora - RESGATE_APOS_MS).toISOString();
@@ -398,6 +405,7 @@ Deno.serve(async (req) => {
   const { data: candidatos } = await supabase
     .from("matches")
     .select("id, api_fixture_id, placar_casa, placar_fora, time_casa, time_fora, fase")
+    .eq("competicao_id", comp.id)
     .eq("status", "agendado")
     .eq("placar_manual", false)
     .lt("inicio_em", limiteResgate)
@@ -471,6 +479,115 @@ Deno.serve(async (req) => {
     }
   }
 
+  return {
+    total: rows.length,
+    upserted: paraUpsert.length,
+    pulados_manual: rows.length - paraUpsert.length,
+  };
+}
+
+Deno.serve(async (req) => {
+  const segredo = req.headers.get("x-cron-secret");
+  if (!segredo || segredo !== Deno.env.get("CRON_SECRET")) {
+    return new Response(JSON.stringify({ ok: false, erro: "não autorizado" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  // Janela de jogo: só faz sentido bater na API quando há jogo relevante — algum começando
+  // em breve, em andamento, ou já vencido mas ainda sem placar (`agendado` que já passou).
+  // Fora disso, pula a run (economiza a maior parte das ~96 runs/dia e poupa a quota da API).
+  const agora = Date.now();
+  const JANELA_ANTES_MS = 2 * 60 * 60 * 1000; // 2h antes do início
+  const JANELA_DEPOIS_MS = 4 * 60 * 60 * 1000; // até 4h depois (cobre prorrogação/atrasos)
+  const inicioMin = new Date(agora - JANELA_DEPOIS_MS).toISOString();
+  const inicioMax = new Date(agora + JANELA_ANTES_MS).toISOString();
+
+  const { data: naJanela } = await supabase
+    .from("matches")
+    .select("id")
+    .eq("status", "agendado")
+    .gte("inicio_em", inicioMin)
+    .lte("inicio_em", inicioMax)
+    .limit(1);
+
+  const { data: vencidos } = await supabase
+    .from("matches")
+    .select("id")
+    .eq("status", "agendado")
+    .lt("inicio_em", inicioMin)
+    .limit(1);
+
+  const temJogo = (naJanela?.length ?? 0) > 0;
+  // `vencidos` (agendados que já começaram há mais de 4h e continuam sem placar) força a run
+  // mesmo fora da janela, para recuperar jogos que a API demorou a mover para "results".
+  const temPendente = (vencidos?.length ?? 0) > 0;
+
+  // Refresh periódico: força a run se o último refresh completo foi há mais de 12h, para
+  // ingerir jogos novos mesmo em dias sem partida na janela.
+  const { data: refreshCache } = await supabase
+    .from("sync_cache")
+    .select("atualizado_em")
+    .eq("chave", REFRESH_KEY)
+    .maybeSingle();
+  const deveRefrescar =
+    !refreshCache ||
+    agora - new Date(refreshCache.atualizado_em as string).getTime() > REFRESH_INTERVALO_MS;
+
+  if (!temJogo && !temPendente && !deveRefrescar) {
+    return new Response(JSON.stringify({ ok: true, pulado: "sem jogo na janela" }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Itera as competições ativas em sequência (preserva o rate-limit atual — nada de
+  // paralelismo entre torneios). Um 429 aborta a run inteira (quota é global na RapidAPI).
+  const { data: competicoes, error: compErro } = await supabase
+    .from("competicoes")
+    .select("id, slug, fs_tournament_url, formato")
+    .eq("ativa", true)
+    .order("ordem");
+
+  if (compErro) {
+    console.error(JSON.stringify({ evento: "sync_competicoes_erro", mensagem: compErro.message }));
+    return new Response(JSON.stringify({ ok: false, erro: compErro.message }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const resumos: Record<string, SyncResumo> = {};
+  for (const comp of (competicoes ?? []) as Competicao[]) {
+    try {
+      resumos[comp.slug] = await syncCompeticao(supabase, comp, agora);
+    } catch (e) {
+      // Rate limit: não é falha de código nem transitória. A quota é compartilhada entre
+      // torneios, então aborta a run inteira; a próxima janela tenta de novo.
+      if (e instanceof RateLimitError) {
+        console.warn(JSON.stringify({ evento: "rate_limit", path: e.path, competicao: comp.slug }));
+        return new Response(
+          JSON.stringify({ ok: false, motivo: "429", path: e.path, competicao: comp.slug }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+      const erro = {
+        mensagem: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+      };
+      console.error(JSON.stringify({ evento: "sync_erro", competicao: comp.slug, ...erro }));
+      return new Response(JSON.stringify({ ok: false, competicao: comp.slug, erro: erro.mensagem }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
   // Marca o refresh completo (só no caminho de sucesso — 429/erro não chegam aqui).
   await supabase
     .from("sync_cache")
@@ -479,13 +596,7 @@ Deno.serve(async (req) => {
       { onConflict: "chave" }
     );
 
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      total: rows.length,
-      upserted: paraUpsert.length,
-      pulados_manual: rows.length - paraUpsert.length,
-    }),
-    { headers: { "Content-Type": "application/json" } }
-  );
+  return new Response(JSON.stringify({ ok: true, competicoes: resumos }), {
+    headers: { "Content-Type": "application/json" },
+  });
 });

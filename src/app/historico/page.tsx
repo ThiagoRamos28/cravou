@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Resumo } from "@/components/historico/resumo";
@@ -7,12 +8,30 @@ import { getSessao } from "@/lib/auth/profile";
 import { listarJogos } from "@/lib/matches";
 import { listarMeusPalpites } from "@/lib/predictions";
 import { resumoHistorico, type ItemHistorico } from "@/lib/historico";
+import {
+  listarCompeticoes,
+  meusOptIns,
+  competicoesVisiveis,
+  resolverCompeticao,
+  COOKIE_COMPETICAO,
+} from "@/lib/competicoes";
 
 export default async function HistoricoPage() {
   const sessao = await getSessao();
   if (!sessao) redirect("/entrar");
 
-  const [jogos, palpites] = await Promise.all([listarJogos(), listarMeusPalpites()]);
+  const [todas, optIns, cookieStore] = await Promise.all([
+    listarCompeticoes(),
+    meusOptIns(),
+    cookies(),
+  ]);
+  const visiveis = competicoesVisiveis(todas, optIns);
+  const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
+
+  const [jogos, palpites] = await Promise.all([
+    atual ? listarJogos({ competicaoId: atual.id }) : Promise.resolve([]),
+    listarMeusPalpites(),
+  ]);
 
   const itens: ItemHistorico[] = jogos
     .filter((j) => j.status === "finalizado" && palpites[j.id])

@@ -3,10 +3,20 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { RankingContent } from "@/components/ranking/ranking-content";
 import type { RankingRow } from "@/lib/ranking";
 import { buscarRanking } from "@/app/ranking/actions";
+import type { Competicao } from "@/lib/competicoes";
 
 vi.mock("@/app/ranking/actions", () => ({
   buscarRanking: vi.fn(),
 }));
+
+const competicao: Competicao = {
+  id: "comp1",
+  slug: "copa-2026",
+  nome: "Copa 2026",
+  formato: "fases",
+  ativa: true,
+  ordem: 1,
+};
 
 const linhasIniciais: RankingRow[] = [
   {
@@ -32,16 +42,16 @@ describe("RankingContent", () => {
   });
 
   it("renderiza com linhasIniciais sem chamar a action", () => {
-    render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" />);
+    render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" competicao={competicao} />);
     expect(screen.getAllByText("Abacatão").length).toBeGreaterThan(0);
     expect(buscarRanking).not.toHaveBeenCalled();
   });
 
   it("ao trocar para temporada_2, chama buscarRanking e renderiza as novas linhas", async () => {
     vi.mocked(buscarRanking).mockResolvedValue(linhasTemporada2);
-    render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" />);
+    render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" competicao={competicao} />);
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "temporada_2" } });
-    expect(buscarRanking).toHaveBeenCalledWith("temporada_2");
+    expect(buscarRanking).toHaveBeenCalledWith("comp1", "temporada_2");
     await waitFor(() => {
       expect(screen.getAllByText("Dannilo").length).toBeGreaterThan(0);
     });
@@ -49,7 +59,7 @@ describe("RankingContent", () => {
 
   it("em erro da action, some o skeleton e mantém as linhas anteriores", async () => {
     vi.mocked(buscarRanking).mockRejectedValue(new Error("conexão caiu"));
-    render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" />);
+    render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" competicao={competicao} />);
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "temporada_2" } });
     await waitFor(() => {
       expect(document.querySelector(".animate-pulse")).not.toBeInTheDocument();
@@ -59,7 +69,7 @@ describe("RankingContent", () => {
 
   it("mostra mensagem de estado vazio quando a resposta é vazia", async () => {
     vi.mocked(buscarRanking).mockResolvedValue([]);
-    render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" />);
+    render(<RankingContent linhasIniciais={linhasIniciais} meuId="u1" competicao={competicao} />);
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "temporada_1" } });
     await waitFor(() => {
       expect(

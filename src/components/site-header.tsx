@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { Trophy } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { buttonVariants } from "@/components/ui/button";
@@ -7,6 +8,14 @@ import { NavLink } from "@/components/nav-link";
 import { getPerfil } from "@/lib/auth/profile";
 import { avatarPadrao } from "@/lib/avatars";
 import { BottomNav } from "@/components/bottom-nav";
+import { CompeticaoSelector } from "@/components/competicao/competicao-selector";
+import {
+  listarCompeticoes,
+  meusOptIns,
+  competicoesVisiveis,
+  resolverCompeticao,
+  COOKIE_COMPETICAO,
+} from "@/lib/competicoes";
 
 export function HeaderBrand() {
   return (
@@ -22,7 +31,14 @@ export function HeaderBrand() {
 }
 
 export async function SiteHeader() {
-  const perfil = await getPerfil();
+  const [perfil, todas, optIns, cookieStore] = await Promise.all([
+    getPerfil(),
+    listarCompeticoes(),
+    meusOptIns(),
+    cookies(),
+  ]);
+  const visiveis = competicoesVisiveis(todas, optIns);
+  const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
 
   return (
     <>
@@ -42,6 +58,15 @@ export async function SiteHeader() {
             )}
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
+            {atual && <CompeticaoSelector competicoes={visiveis} selecionadaId={atual.id} />}
+            {perfil && (
+              <Link
+                href="/perfil/competicoes"
+                className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
+              >
+                Minhas competições
+              </Link>
+            )}
             <ThemeToggle />
             {perfil ? (
               <UserMenu
