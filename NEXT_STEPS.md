@@ -99,16 +99,7 @@ entre si desde a 0024), mas quando o Brasileirão precisar divergir de regras, f
 `app_config` (ou tabela) **por competição** + `recalcular_pontos` escolhendo o modelo pela
 COMPETIÇÃO, não pela data.
 
-## 5. Corrigir card "Pontue" da landing (pontuação desatualizada) — RÁPIDO
-
-O card passo 02 da landing (`src/components/landing/features.tsx:24-25`) ainda mostra o modelo
-**antigo**: "Placar exato vale 10 pontos… Leva 5." O vigente é o **Modelo A**: placar exato
-**15**, resultado (V/E/D) **4** (saldo+vencedor 7, gols de um time 1). Trocar a `description`
-para algo como: _"Placar exato vale 15 pontos. Acertou só quem ganhou? Leva 4. A pontuação
-entra sozinha quando o jogo acaba."_ (conferir os números atuais em `/regras`, que lê de
-`app_config`). Correção de 1 linha; sem testes dependentes dessa string.
-
-## 6. Fumaça visual do site publicado (opcional)
+## 5. Fumaça visual do site publicado (opcional)
 
 Ainda não feita visualmente — **login travou no rate limit por hora** do Supabase (ver aviso no
 topo; conta certa é `thiagorc85@gmail.com`). Depois, abrir o site em produção e
@@ -118,7 +109,7 @@ agendados do Brasileirão (badges V/E/D + "ver forma"). Feito via automação de
 (`agent-browser`). Login por **link mágico**: disparar em `/entrar` → aba "Link mágico" e o
 Thiago cola o link recebido.
 
-## 7. Encerramento (feito em sessões anteriores)
+## 6. Encerramento (feito em sessões anteriores)
 
 **Registrar a feature "forma recente" no Obsidian Vault** — ✅ FEITO. A nota
 `Projetos/Pessoais/Cravou!.md` foi atualizada com a forma recente + backfill de

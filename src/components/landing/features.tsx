@@ -22,14 +22,14 @@ const features: Feature[] = [
     step: "02",
     title: "Pontue",
     description:
-      "Placar exato vale 10 pontos. Acertou só quem ganhou? Leva 5. A pontuação entra sozinha quando o jogo acaba.",
+      "Placar exato vale 15 pontos. Acertou só quem ganhou? Leva 4. A pontuação entra sozinha quando o jogo acaba.",
   },
   {
     icon: Trophy,
     step: "03",
     title: "Suba no ranking",
     description:
-      "Acompanhe a classificação em tempo real e dispute o topo com a galera até a grande final.",
+      "Acompanhe a classificação em tempo real e dispute o topo com a galera rodada a rodada.",
   },
 ];
 
