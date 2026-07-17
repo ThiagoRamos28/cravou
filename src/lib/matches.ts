@@ -134,3 +134,36 @@ export async function listarFasesERodadas(): Promise<
     return [];
   }
 }
+
+// Forma recente (últimos 5 jogos por equipe) de todos os times da competição.
+// Deriva de matches finalizados já sincronizados — sem chamadas externas.
+export async function listarFormaCompeticao(
+  competicaoId: string,
+): Promise<Map<string, FormaJogo[]>> {
+  const mapa = new Map<string, FormaJogo[]>();
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("matches")
+      .select("time_casa, time_fora, placar_casa, placar_fora, inicio_em")
+      .eq("competicao_id", competicaoId)
+      .eq("status", "finalizado")
+      .order("inicio_em", { ascending: true });
+    const jogos =
+      (data as Pick<
+        Match,
+        "time_casa" | "time_fora" | "placar_casa" | "placar_fora" | "inicio_em"
+      >[]) ?? [];
+    const times = new Set<string>();
+    for (const j of jogos) {
+      times.add(j.time_casa);
+      times.add(j.time_fora);
+    }
+    for (const time of times) {
+      mapa.set(time, calcularForma(jogos, time));
+    }
+    return mapa;
+  } catch {
+    return mapa;
+  }
+}
