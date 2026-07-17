@@ -28,6 +28,44 @@ export type Match = {
   odds: Odds | null;
 };
 
+export type ResultadoForma = "V" | "E" | "D";
+
+export type FormaJogo = {
+  resultado: ResultadoForma;
+  golsPro: number;
+  golsContra: number;
+  adversario: string;
+  mando: "casa" | "fora";
+  inicioEm: string;
+};
+
+export function calcularForma(
+  jogosFinalizados: Pick<
+    Match,
+    "time_casa" | "time_fora" | "placar_casa" | "placar_fora" | "inicio_em"
+  >[],
+  time: string,
+): FormaJogo[] {
+  return jogosFinalizados
+    .filter(
+      (j) =>
+        (j.time_casa === time || j.time_fora === time) &&
+        j.placar_casa != null &&
+        j.placar_fora != null,
+    )
+    .sort((a, b) => a.inicio_em.localeCompare(b.inicio_em)) // mais antigo → mais recente
+    .slice(-5)
+    .map((j) => {
+      const mando: "casa" | "fora" = j.time_casa === time ? "casa" : "fora";
+      const golsPro = (mando === "casa" ? j.placar_casa : j.placar_fora) as number;
+      const golsContra = (mando === "casa" ? j.placar_fora : j.placar_casa) as number;
+      const adversario = mando === "casa" ? j.time_fora : j.time_casa;
+      const resultado: ResultadoForma =
+        golsPro > golsContra ? "V" : golsPro === golsContra ? "E" : "D";
+      return { resultado, golsPro, golsContra, adversario, mando, inicioEm: j.inicio_em };
+    });
+}
+
 const COLS =
   "id, fase, rodada, time_casa, time_fora, bandeira_casa, bandeira_fora, inicio_em, status, placar_casa, placar_fora, odds";
 
@@ -94,5 +132,38 @@ export async function listarFasesERodadas(): Promise<
     }));
   } catch {
     return [];
+  }
+}
+
+// Forma recente (últimos 5 jogos por equipe) de todos os times da competição.
+// Deriva de matches finalizados já sincronizados — sem chamadas externas.
+export async function listarFormaCompeticao(
+  competicaoId: string,
+): Promise<Map<string, FormaJogo[]>> {
+  const mapa = new Map<string, FormaJogo[]>();
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("matches")
+      .select("time_casa, time_fora, placar_casa, placar_fora, inicio_em")
+      .eq("competicao_id", competicaoId)
+      .eq("status", "finalizado")
+      .order("inicio_em", { ascending: true });
+    const jogos =
+      (data as Pick<
+        Match,
+        "time_casa" | "time_fora" | "placar_casa" | "placar_fora" | "inicio_em"
+      >[]) ?? [];
+    const times = new Set<string>();
+    for (const j of jogos) {
+      times.add(j.time_casa);
+      times.add(j.time_fora);
+    }
+    for (const time of times) {
+      mapa.set(time, calcularForma(jogos, time));
+    }
+    return mapa;
+  } catch {
+    return mapa;
   }
 }
