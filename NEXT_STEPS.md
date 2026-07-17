@@ -2,18 +2,29 @@
 
 Última atualização: 2026-07-17 fim de sessão (branch `master` — tudo mergeado e deployado)
 
-**Feature "forma recente" (2ª spec futura) CONCLUÍDA e mergeada em `master` (commit `3d518e6`,
-push `1b9eebc..3d518e6`) — a Vercel deploya automático.** 228 testes verdes + build ok.
-Antes disso, a `feat/multi-competicao` já estava em prod (commit `fb8b86f`), sync-matches v27,
-migrations 0019–0023 e bucket `escudos`.
+**Nesta sessão (pós-forma-recente):** corrigimos **dois bugs de ranking** relatados pelo
+Thiago e limpamos a identidade da Copa. Antes: `feat/multi-competicao` (commit `fb8b86f`),
+forma recente (`3d518e6`), sync-matches v27, migrations 0019–0024, bucket `escudos`. 228 testes
+verdes + build ok.
 
-> ⚠️ **Novo trabalho identificado (prioridade da próxima sessão): a UX do `/ranking` ficou
-> confusa depois da adição da nova competição.** É o item §1 abaixo — provavelmente precisa de
-> `superpowers:brainstorming` antes de mexer. Ainda **não diagnosticado ao vivo**: a fumaça
-> visual parou porque o login de teste foi feito com a **conta errada** (usei
-> `informatica@disdal.com.br`, tirado do bloco `# userEmail` do contexto — NÃO é
-> necessariamente a conta do Cravou!). Próxima sessão: confirmar com o Thiago qual conta usar
-> antes de logar em produção.
+- **BUG CORRIGIDO — ranking vazava entre competições** (commit `afc37ab`, migration **0024**
+  aplicada em prod). O `/ranking` do Brasileirão mostrava 211 pts em 2 jogos porque
+  `ranking(competicao)` somava Copa+Brasileirão no período `'geral'` (filtro no ON do LEFT JOIN
+  não filtra os agregados de `predictions`). Corrigido com pré-filtro via `exists`; teste de
+  regressão pgTAP em `supabase/tests/ranking_isolacao_competicao.test.sql` (3/3 ok). Ver
+  memória `project_ranking_vazamento_competicao`.
+- **BUG CORRIGIDO — trocar competição exigia F5** (commit `59c2f38`). `RankingContent` usava
+  `useState(linhasIniciais)` que ignora novo valor inicial após montado. Fix: `key={atual.id}`
+  remonta ao trocar competição.
+- **Identidade neutralizada** (commit `59c2f38`): metadata, footer, hero e features não falam
+  mais "Bolão da Copa" — agora é bolão de futebol multi-competição. Regras de mata-mata em
+  `/regras` e no popover de temporadas ficaram (só aparecem no contexto da Copa arquivada).
+
+> **Login de teste:** a conta certa do Cravou! é **`thiagorc85@gmail.com`** (NÃO
+> `informatica@disdal.com.br`, que veio do bloco `# userEmail` e é de outro contexto). Login por
+> **link mágico** via `agent-browser`, mas atenção ao **rate limit por hora** do Supabase (vários
+> envios seguidos travam com "Não foi possível enviar o link"). Nesta sessão não deu pra verificar
+> ao vivo por causa disso — o Thiago confirmou os fixes no próprio navegador logado.
 
 ## Estado atual
 
@@ -35,25 +46,22 @@ migrations 0019–0023 e bucket `escudos`.
   vantagem) e os 3 acabaram entrando no Brasileirão. **Decisão: manter todos** — nada foi
   alterado no banco.
 
-## 1. Redesenhar a UX do ranking com múltiplas competições (PRIORIDADE)
+## 1. UX do ranking — abas por competição (opcional, era design, não bug)
 
-**Problema relatado pelo Thiago:** com a nova competição (Brasileirão) somada à Copa, a
-experiência do `/ranking` **ficou confusa**. Não chegamos a olhar ao vivo (bloqueado pela
-conta errada — ver aviso no topo), então o diagnóstico ainda está aberto.
+**A dor central ("211 pts em 2 jogos") era o BUG de vazamento — já corrigido acima.** O que
+sobra aqui é **polimento de UX**, não urgência. No brainstorm desta sessão fechamos um design
+(não implementado):
 
-Pontos de partida para investigar (ler o código antes de propor):
-- `src/app/ranking/page.tsx` + `src/app/ranking/actions.ts`
-- `src/components/ranking/ranking-content.tsx` — orquestra período + skeleton + estado vazio
-- `src/components/ranking/*` — `SeasonSelector` (T1/T2/Geral, só para `formato='fases'`),
-  colunas, lista mobile
-- `src/components/competicao/competicao-selector.tsx` — seletor de competição (cookie)
-- Hipótese a validar: a combinação **seletor de competição** (no header) + **sub-seletor de
-  temporada T1/T2/Geral** (dentro do ranking, só para a Copa) cria dois níveis de filtro que
-  se confundem; para o Brasileirão o sub-seletor some, mudando o layout entre competições.
+- Abas por competição **na própria página** do ranking (estilo `FeedTabs`), com as competições
+  **ativas**; Copa (arquivada) numa seção discreta "Temporadas anteriores".
+- T1/T2/Geral vira **sub-controle** que só aparece quando a competição é a Copa (`formato='fases'`).
+- Seletor de competição do header **oculto só na rota `/ranking`** (wrapper client com `usePathname`).
+- **Escopo:** só o ranking, por ora (jogos/histórico/regras seguem com o seletor do header).
+- É **frontend puro** — a server action `buscarRanking(competicaoId, periodo)` já existe.
 
-Fluxo sugerido: `superpowers:brainstorming` (entender o que está confuso, com o Thiago olhando
-a tela junto — talvez usar o companion visual) → spec em `docs/superpowers/specs/` → plano →
-execução. **Não** partir direto para código; é problema de design de UX, não de bug.
+Arquivos: `src/app/ranking/page.tsx`, `src/components/ranking/ranking-content.tsx`,
+`src/components/ranking/season-selector.tsx`, `src/components/competicao/competicao-selector.tsx`.
+Retomar via `superpowers:writing-plans` (o design já está acordado) → execução.
 
 ## 2. Ver as odds funcionando na UI (demo)
 
@@ -64,10 +72,30 @@ Odds só populam ~2h antes de um jogo do Brasileirão (por design, quota-friendl
   bookmaker bet365}`. **O UPDATE direto em `matches` foi bloqueado pelo classificador** (dado
   de produção) — precisa de autorização explícita do Thiago para semear.
 
-## 3. Fumaça visual do site publicado (opcional)
+## 3. Identidade multi-competição — rebrand completo (spec própria, futura)
 
-Ainda não feita visualmente — **login travou na conta errada** (ver aviso no topo; confirmar
-com o Thiago a conta certa do Cravou! antes de logar). Depois, abrir o site em produção e
+Nesta sessão já **removemos as referências textuais à Copa** (metadata, footer, hero, features).
+O que sobra é o rebrand mais profundo, se/quando quiser: ícone (hoje `Trophy` genérico), tom
+visual, revisão da landing inteira para comunicar "plataforma de bolões" (não um evento único),
+e talvez um nome/tagline definitivos. É trabalho de design/copy — fazer via
+`superpowers:brainstorming` como projeto próprio.
+
+## 4. Pontuação por competição — dívida técnica (backend, futura)
+
+Hoje `app_config` é **global** e `recalcular_pontos` escolhe o modelo **pela data do jogo**
+(corte 04/07). O Brasileirão só recebe Modelo A (15/7/4/1) porque todos os seus jogos são
+pós-04/07 — **coincidência de calendário**, não isolamento real. Riscos: (a) impossível dar
+regras diferentes por competição; (b) mexer em `/admin/config` reescreve o modelo de todas as
+competições "atuais" e o trigger re-roda no sync (mecanismo que já corrompeu a T1 uma vez —
+ver memória `project_virada_modelo_sql_manual`). **Não é bug ativo** (os rankings já não somam
+entre si desde a 0024), mas quando o Brasileirão precisar divergir de regras, fazer spec de
+`app_config` (ou tabela) **por competição** + `recalcular_pontos` escolhendo o modelo pela
+COMPETIÇÃO, não pela data.
+
+## 5. Fumaça visual do site publicado (opcional)
+
+Ainda não feita visualmente — **login travou no rate limit por hora** do Supabase (ver aviso no
+topo; conta certa é `thiagorc85@gmail.com`). Depois, abrir o site em produção e
 conferir: header com **seletor de competição**; `/ranking` com dados; `/jogos` **não** mostra
 Brasileirão pra quem não fez opt-in; e o novo bloco de **forma** aparecendo nos cards de jogos
 agendados do Brasileirão (badges V/E/D + "ver forma"). Feito via automação de browser
