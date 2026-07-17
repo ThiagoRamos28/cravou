@@ -35,7 +35,12 @@ export default async function RankingPage() {
           Ranking
         </h1>
         {atual ? (
-          <RankingContent linhasIniciais={linhas} meuId={sessao.userId} competicao={atual} />
+          <RankingContent
+            key={atual.id}
+            linhasIniciais={linhas}
+            meuId={sessao.userId}
+            competicao={atual}
+          />
         ) : (
           <p className="text-muted-foreground">Nenhuma competição disponível.</p>
         )}
