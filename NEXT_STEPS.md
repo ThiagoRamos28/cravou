@@ -1,11 +1,19 @@
 # Próximos passos — Cravou!
 
-Última atualização: 2026-07-17 (branch `master` — tudo mergeado e deployado)
+Última atualização: 2026-07-17 fim de sessão (branch `master` — tudo mergeado e deployado)
 
 **Feature "forma recente" (2ª spec futura) CONCLUÍDA e mergeada em `master` (commit `3d518e6`,
 push `1b9eebc..3d518e6`) — a Vercel deploya automático.** 228 testes verdes + build ok.
 Antes disso, a `feat/multi-competicao` já estava em prod (commit `fb8b86f`), sync-matches v27,
 migrations 0019–0023 e bucket `escudos`.
+
+> ⚠️ **Novo trabalho identificado (prioridade da próxima sessão): a UX do `/ranking` ficou
+> confusa depois da adição da nova competição.** É o item §1 abaixo — provavelmente precisa de
+> `superpowers:brainstorming` antes de mexer. Ainda **não diagnosticado ao vivo**: a fumaça
+> visual parou porque o login de teste foi feito com a **conta errada** (usei
+> `informatica@disdal.com.br`, tirado do bloco `# userEmail` do contexto — NÃO é
+> necessariamente a conta do Cravou!). Próxima sessão: confirmar com o Thiago qual conta usar
+> antes de logar em produção.
 
 ## Estado atual
 
@@ -27,7 +35,27 @@ migrations 0019–0023 e bucket `escudos`.
   vantagem) e os 3 acabaram entrando no Brasileirão. **Decisão: manter todos** — nada foi
   alterado no banco.
 
-## 1. Ver as odds funcionando na UI (demo)
+## 1. Redesenhar a UX do ranking com múltiplas competições (PRIORIDADE)
+
+**Problema relatado pelo Thiago:** com a nova competição (Brasileirão) somada à Copa, a
+experiência do `/ranking` **ficou confusa**. Não chegamos a olhar ao vivo (bloqueado pela
+conta errada — ver aviso no topo), então o diagnóstico ainda está aberto.
+
+Pontos de partida para investigar (ler o código antes de propor):
+- `src/app/ranking/page.tsx` + `src/app/ranking/actions.ts`
+- `src/components/ranking/ranking-content.tsx` — orquestra período + skeleton + estado vazio
+- `src/components/ranking/*` — `SeasonSelector` (T1/T2/Geral, só para `formato='fases'`),
+  colunas, lista mobile
+- `src/components/competicao/competicao-selector.tsx` — seletor de competição (cookie)
+- Hipótese a validar: a combinação **seletor de competição** (no header) + **sub-seletor de
+  temporada T1/T2/Geral** (dentro do ranking, só para a Copa) cria dois níveis de filtro que
+  se confundem; para o Brasileirão o sub-seletor some, mudando o layout entre competições.
+
+Fluxo sugerido: `superpowers:brainstorming` (entender o que está confuso, com o Thiago olhando
+a tela junto — talvez usar o companion visual) → spec em `docs/superpowers/specs/` → plano →
+execução. **Não** partir direto para código; é problema de design de UX, não de bug.
+
+## 2. Ver as odds funcionando na UI (demo)
 
 Odds só populam ~2h antes de um jogo do Brasileirão (por design, quota-friendly). Para ver antes:
 - Esperar um jogo entrar na janela de 2h e conferir `/jogos` (card mostra "ver odds" recolhível).
@@ -36,18 +64,21 @@ Odds só populam ~2h antes de um jogo do Brasileirão (por design, quota-friendl
   bookmaker bet365}`. **O UPDATE direto em `matches` foi bloqueado pelo classificador** (dado
   de produção) — precisa de autorização explícita do Thiago para semear.
 
-## 2. Fumaça visual do site publicado (opcional)
+## 3. Fumaça visual do site publicado (opcional)
 
-Ainda não feita visualmente. Abrir o site em produção e conferir: header com **seletor de
-competição**; `/ranking` com dados; `/jogos` **não** mostra Brasileirão pra quem não fez
-opt-in; e o novo bloco de **forma** aparecendo nos cards de jogos agendados do Brasileirão
-(badges V/E/D + "ver forma"). Pode ser feito via automação de browser.
+Ainda não feita visualmente — **login travou na conta errada** (ver aviso no topo; confirmar
+com o Thiago a conta certa do Cravou! antes de logar). Depois, abrir o site em produção e
+conferir: header com **seletor de competição**; `/ranking` com dados; `/jogos` **não** mostra
+Brasileirão pra quem não fez opt-in; e o novo bloco de **forma** aparecendo nos cards de jogos
+agendados do Brasileirão (badges V/E/D + "ver forma"). Feito via automação de browser
+(`agent-browser`). Login por **link mágico**: disparar em `/entrar` → aba "Link mágico" e o
+Thiago cola o link recebido.
 
-## 3. Encerramento pendente desta entrega
+## 4. Encerramento (feito nesta sessão)
 
-**Registrar a feature "forma recente" no Obsidian Vault** (`registrar-no-vault`) — protocolo
-de encerramento do projeto. (As features anteriores — multi-competição, escudos, odds — já
-foram registradas.)
+**Registrar a feature "forma recente" no Obsidian Vault** — ✅ FEITO. A nota
+`Projetos/Pessoais/Cravou!.md` foi atualizada com a forma recente + backfill de
+multi-competição, escudos e odds (que estavam faltando).
 
 ## Referências úteis para retomar
 
