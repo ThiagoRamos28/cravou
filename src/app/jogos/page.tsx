@@ -6,7 +6,7 @@ import { MatchCard } from "@/components/jogos/match-card";
 import { JogosFiltro } from "@/components/jogos/jogos-filtro";
 import { NovidadesModal } from "@/components/novidades-modal";
 import { getSessao } from "@/lib/auth/profile";
-import { listarJogos } from "@/lib/matches";
+import { listarJogos, listarFormaCompeticao } from "@/lib/matches";
 import { listarMeusPalpites, getMinutosCorte } from "@/lib/predictions";
 import {
   listarCompeticoes,
@@ -51,6 +51,10 @@ export default async function JogosPage({
     listarMeusPalpites(),
   ]);
 
+  const formaPorTime = atual
+    ? await listarFormaCompeticao(atual.id)
+    : new Map();
+
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
@@ -92,6 +96,8 @@ export default async function JogosPage({
                     match={j}
                     palpite={palpites[j.id]}
                     minutosCorte={minutosCorte}
+                    formaCasa={formaPorTime.get(j.time_casa) ?? []}
+                    formaFora={formaPorTime.get(j.time_fora) ?? []}
                   />
                 ))}
               </div>
