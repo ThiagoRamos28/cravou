@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MatchCard } from "@/components/jogos/match-card";
-import type { Match, Odds } from "@/lib/matches";
+import type { Match, Odds, FormaJogo } from "@/lib/matches";
 import type { Prediction } from "@/lib/predictions";
 
 // PalpiteForm agora usa useToast — mockar para evitar erro de contexto.
@@ -131,5 +131,23 @@ describe("MatchCard", () => {
   it("não mostra 'ver odds' quando agendado sem odds", () => {
     render(<MatchCard match={{ ...base, status: "agendado", odds: null }} />);
     expect(screen.queryByText("ver odds")).not.toBeInTheDocument();
+  });
+
+  it("mostra a forma em jogo não finalizado quando há dados", () => {
+    const formaExemplo: FormaJogo[] = [
+      { resultado: "V", golsPro: 2, golsContra: 0, adversario: "X", mando: "casa", inicioEm: "2026-07-01T22:00:00.000Z" },
+    ];
+    const match = { ...base, status: "agendado" as const };
+    render(<MatchCard match={match} formaCasa={formaExemplo} formaFora={[]} />);
+    expect(screen.getByRole("button", { name: /ver forma/i })).toBeInTheDocument();
+  });
+
+  it("não mostra a forma em jogo finalizado", () => {
+    const formaExemplo: FormaJogo[] = [
+      { resultado: "V", golsPro: 2, golsContra: 0, adversario: "X", mando: "casa", inicioEm: "2026-07-01T22:00:00.000Z" },
+    ];
+    const match = { ...base, status: "finalizado" as const, placar_casa: 1, placar_fora: 0 };
+    render(<MatchCard match={match} formaCasa={formaExemplo} formaFora={[]} />);
+    expect(screen.queryByRole("button", { name: /ver forma/i })).toBeNull();
   });
 });

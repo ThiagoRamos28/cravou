@@ -1,8 +1,9 @@
 import { traduzirPais } from "@/lib/i18n/paises";
-import type { Match } from "@/lib/matches";
+import type { Match, FormaJogo } from "@/lib/matches";
 import type { Prediction } from "@/lib/predictions";
 import { PalpiteForm } from "@/components/jogos/palpite-form";
 import { OddsJogo } from "@/components/jogos/odds-jogo";
+import { FormaTimes } from "@/components/jogos/forma-times";
 
 function Time({
   nome,
@@ -53,10 +54,14 @@ export function MatchCard({
   match,
   palpite,
   minutosCorte = 10,
+  formaCasa = [],
+  formaFora = [],
 }: {
   match: Match;
   palpite?: Prediction;
   minutosCorte?: number;
+  formaCasa?: FormaJogo[];
+  formaFora?: FormaJogo[];
 }) {
   const finalizado = match.status === "finalizado";
   const hora = new Date(match.inicio_em).toLocaleString("pt-BR", {
@@ -105,6 +110,15 @@ export function MatchCard({
       </div>
       <PalpiteForm match={match} palpite={palpite} minutosCorte={minutosCorte} />
       {match.odds && match.status !== "finalizado" && <OddsJogo odds={match.odds} />}
+      {match.status !== "finalizado" &&
+        (formaCasa.length > 0 || formaFora.length > 0) && (
+          <FormaTimes
+            nomeCasa={traduzirPais(match.time_casa)}
+            nomeFora={traduzirPais(match.time_fora)}
+            formaCasa={formaCasa}
+            formaFora={formaFora}
+          />
+        )}
     </article>
   );
 }
