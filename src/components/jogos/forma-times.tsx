@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { traduzirPais } from "@/lib/i18n/paises";
 import type { FormaJogo, ResultadoForma } from "@/lib/matches";
 
 const COR: Record<ResultadoForma, string> = {
@@ -17,7 +18,7 @@ function Badge({ jogo }: { jogo: FormaJogo }) {
     jogo.mando === "casa"
       ? `${jogo.golsPro}×${jogo.golsContra}`
       : `${jogo.golsContra}×${jogo.golsPro}`;
-  const rotulo = `${ROTULO[jogo.resultado]} — ${jogo.mando === "casa" ? "" : "fora, "}${placar} vs ${jogo.adversario}`;
+  const rotulo = `${ROTULO[jogo.resultado]} — ${jogo.mando === "casa" ? "" : "fora, "}${placar} vs ${traduzirPais(jogo.adversario)}`;
   return (
     <span
       className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${COR[jogo.resultado]}`}
@@ -56,7 +57,7 @@ function DetalheTime({ nome, forma }: { nome: string; forma: FormaJogo[] }) {
             j.mando === "casa"
               ? `${j.golsPro}×${j.golsContra}`
               : `${j.golsContra}×${j.golsPro}`;
-          return `${placar} ${j.adversario} (${j.resultado})`;
+          return `${placar} ${traduzirPais(j.adversario)} (${j.resultado})`;
         })
         .join(" · ")}
     </div>
