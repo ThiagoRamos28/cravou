@@ -23,8 +23,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cravou! — Bolão da Copa",
-  description: "Registre seus palpites da Copa, pontue e suba no ranking.",
+  title: "Cravou! — Bolão de futebol",
+  description: "Registre seus palpites, pontue a cada jogo e suba no ranking.",
 };
 
 export default function RootLayout({

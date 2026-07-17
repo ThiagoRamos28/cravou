@@ -5,7 +5,7 @@ export function SiteFooter() {
         <span className="font-display text-base font-bold uppercase tracking-tight text-foreground">
           Cravou!
         </span>
-        <span>Bolão da Copa do Mundo 2026 · feito pra galera</span>
+        <span>Bolão de futebol · feito pra galera</span>
       </div>
     </footer>
   );

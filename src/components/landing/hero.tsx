@@ -47,7 +47,7 @@ export function Hero({ logado = false }: { logado?: boolean }) {
           className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-sm font-medium text-muted-foreground"
         >
           <span className="h-2 w-2 rounded-full bg-accent" />
-          Copa do Mundo 2026 · bolão da galera
+          O bolão de futebol da galera
         </motion.span>
 
         <motion.h1
@@ -64,7 +64,7 @@ export function Hero({ logado = false }: { logado?: boolean }) {
           className="max-w-prose text-pretty text-lg text-muted-foreground sm:text-xl"
         >
           Registre seus palpites para cada partida, acerte os placares e veja
-          quem manda no ranking até a final.
+          quem manda no ranking a cada rodada.
         </motion.p>
 
         <motion.div

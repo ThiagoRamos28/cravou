@@ -15,7 +15,7 @@ const features: Feature[] = [
     step: "01",
     title: "Palpite",
     description:
-      "Cravar o placar de cada jogo da Copa antes do apito inicial. Pode editar até pouco antes da bola rolar.",
+      "Cravar o placar de cada jogo antes do apito inicial. Pode editar até pouco antes da bola rolar.",
   },
   {
     icon: Star,
@@ -41,7 +41,7 @@ export function Features() {
           Como funciona
         </h2>
         <p className="mt-3 text-muted-foreground">
-          Três passos pra entrar na brincadeira e não largar até a final.
+          Três passos pra entrar na brincadeira e não largar mais.
         </p>
       </Reveal>
 
