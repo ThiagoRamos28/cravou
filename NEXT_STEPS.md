@@ -63,6 +63,13 @@ Arquivos: `src/app/ranking/page.tsx`, `src/components/ranking/ranking-content.ts
 `src/components/ranking/season-selector.tsx`, `src/components/competicao/competicao-selector.tsx`.
 Retomar via `superpowers:writing-plans` (o design já está acordado) → execução.
 
+**Ideia relacionada (futura) — ranking MENSAL do Brasileirão:** além do Geral, um ranking por
+mês (jan, fev, …). É o mesmo mecanismo do sub-seletor de temporada da Copa — a função
+`ranking(p_competicao_id, p_periodo)` já aceita `p_periodo`; bastaria estender o `case` para
+períodos mensais (filtrando `m.inicio_em` pelo mês) e o sub-controle da página oferecer
+"Geral + um por mês" quando a competição é o Brasileirão (assim como oferece T1/T2/Geral para a
+Copa). Encaixa naturalmente no redesenho de abas acima — desenhar junto.
+
 ## 2. Ver as odds funcionando na UI (demo)
 
 Odds só populam ~2h antes de um jogo do Brasileirão (por design, quota-friendly). Para ver antes:
