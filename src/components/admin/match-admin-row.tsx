@@ -17,6 +17,11 @@ export function MatchAdminRow({ match }: { match: Match }) {
       <span className="min-w-40 flex-1 font-medium">
         {match.time_casa} <span className="text-muted-foreground">x</span> {match.time_fora}
       </span>
+      {(match.status === "adiado" || match.status === "cancelado") && (
+        <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-semibold uppercase tracking-tight text-muted-foreground">
+          {match.status === "adiado" ? "Adiado" : "Cancelado"}
+        </span>
+      )}
       <label className="sr-only" htmlFor={`casa-${match.id}`}>
         Placar {match.time_casa}
       </label>

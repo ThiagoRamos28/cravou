@@ -12,7 +12,7 @@ async function handleDispararSync() {
 
 export default async function AdminPage() {
   await requireAdmin();
-  const jogos = await listarJogos();
+  const jogos = await listarJogos({ incluirNaoJogaveis: true });
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">

@@ -242,6 +242,7 @@ export async function listarJogosParaComposer(): Promise<
       .from("matches")
       .select("id, time_casa, time_fora")
       .gte("inicio_em", limite.toISOString())
+      .not("status", "in", '("adiado","cancelado")')
       .order("inicio_em", { ascending: true })
       .limit(30);
     return (data ?? []) as { id: string; time_casa: string; time_fora: string }[];
