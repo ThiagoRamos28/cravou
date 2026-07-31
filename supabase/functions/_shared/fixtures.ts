@@ -18,7 +18,11 @@ export type FsResult = FsFixture & {
 export type Decisao = "normal" | "prorrogacao" | "penaltis";
 
 export type FsMatchStatus = {
+  stage?: string;
   is_finished?: boolean;
+  is_postponed?: boolean;
+  is_cancelled?: boolean;
+  is_in_progress?: boolean;
   is_finished_after_extra_time: boolean;
   is_finished_after_penalties: boolean;
 };
@@ -142,6 +146,23 @@ export function resgateDeDetalhes(details: FsMatchDetails): {
 } | null {
   if (!details.match_status?.is_finished) return null;
   return placar90Min(details);
+}
+
+export type EstadoPendencia = "finalizado" | "adiado" | "cancelado";
+
+// Destino de um jogo que continua `agendado` muito depois do horário marcado.
+// A ordem das checagens importa: um jogo remarcado que já aconteceu chega com
+// `is_finished` e pode carregar `is_postponed` antigo — encerrado vence. E um jogo
+// adiado que depois foi cancelado de vez carrega os dois — cancelado vence, porque
+// é terminal e `adiado` ficaria esperando para sempre uma remarcação que não vem.
+// `null` = nada a fazer: jogo atrasado ou em andamento, que a próxima run reavalia.
+export function estadoDePendencia(details: FsMatchDetails): EstadoPendencia | null {
+  const s = details.match_status;
+  if (!s) return null;
+  if (s.is_finished) return "finalizado";
+  if (s.is_cancelled) return "cancelado";
+  if (s.is_postponed) return "adiado";
+  return null;
 }
 
 const RODADAS_CONHECIDAS: Record<string, string> = {

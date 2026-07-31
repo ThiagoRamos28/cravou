@@ -7,6 +7,7 @@ import {
   placar90Min,
   resgateDeDetalhes,
   rodadaFromTournamentName,
+  estadoDePendencia,
   type FsMatchDetails,
 } from "../fixtures";
 
@@ -223,5 +224,66 @@ describe("rodadaFromTournamentName", () => {
 
   it("faz slugify do texto quando não reconhece o rótulo", () => {
     expect(rodadaFromTournamentName("Something - Weird Round!")).toBe("weird-round");
+  });
+});
+
+describe("estadoDePendencia", () => {
+  const base = {
+    match_id: "m1",
+    scores: {
+      home: 0, away: 0,
+      home_1st_half: 0, away_1st_half: 0,
+      home_2nd_half: 0, away_2nd_half: 0,
+      home_extra_time: 0, away_extra_time: 0,
+      home_penalties: null, away_penalties: null,
+    },
+  };
+
+  function comStatus(status: Partial<FsMatchDetails["match_status"]>): FsMatchDetails {
+    return {
+      ...base,
+      match_status: {
+        is_finished_after_extra_time: false,
+        is_finished_after_penalties: false,
+        ...status,
+      },
+    } as FsMatchDetails;
+  }
+
+  it("jogo encerrado vira finalizado", () => {
+    expect(estadoDePendencia(comStatus({ is_finished: true }))).toBe("finalizado");
+  });
+
+  it("jogo adiado vira adiado", () => {
+    expect(
+      estadoDePendencia(comStatus({ stage: "Postponed", is_postponed: true }))
+    ).toBe("adiado");
+  });
+
+  it("jogo cancelado vira cancelado", () => {
+    expect(
+      estadoDePendencia(comStatus({ stage: "Cancelled", is_cancelled: true }))
+    ).toBe("cancelado");
+  });
+
+  it("encerrado tem precedência sobre adiado (jogo remarcado que já aconteceu)", () => {
+    expect(
+      estadoDePendencia(comStatus({ is_finished: true, is_postponed: true }))
+    ).toBe("finalizado");
+  });
+
+  it("cancelado tem precedência sobre adiado (adiado e depois cancelado de vez)", () => {
+    expect(
+      estadoDePendencia(comStatus({ is_postponed: true, is_cancelled: true }))
+    ).toBe("cancelado");
+  });
+
+  it("jogo em andamento ou apenas atrasado não muda de estado", () => {
+    expect(estadoDePendencia(comStatus({ is_in_progress: true }))).toBeNull();
+    expect(estadoDePendencia(comStatus({}))).toBeNull();
+  });
+
+  it("payload sem match_status não muda de estado", () => {
+    expect(estadoDePendencia({ ...base } as FsMatchDetails)).toBeNull();
   });
 });
