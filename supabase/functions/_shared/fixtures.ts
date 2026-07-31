@@ -133,21 +133,6 @@ export function placar90Min(details: FsMatchDetails): {
   };
 }
 
-// Resgate ativo: a lista `results` do torneio atrasa horas para incluir um jogo recém-encerrado,
-// mas `matches/details` já sabe o resultado na hora. Para um jogo `agendado` cujo horário já
-// passou, consultamos os detalhes diretamente; se estiver finalizado, devolvemos o placar de
-// 90min pronto para gravar. Retorna null se o jogo ainda não terminou.
-export function resgateDeDetalhes(details: FsMatchDetails): {
-  placar_casa: number;
-  placar_fora: number;
-  decisao: Decisao;
-  placar_penaltis_casa: number | null;
-  placar_penaltis_fora: number | null;
-} | null {
-  if (!details.match_status?.is_finished) return null;
-  return placar90Min(details);
-}
-
 export type EstadoPendencia = "finalizado" | "adiado" | "cancelado";
 
 // Destino de um jogo que continua `agendado` muito depois do horário marcado.
