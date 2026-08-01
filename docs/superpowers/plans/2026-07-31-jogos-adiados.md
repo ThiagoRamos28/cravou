@@ -775,9 +775,21 @@ Em `supabase/functions/sync-matches/index.ts`, apague o trecho que começa no co
 
 Se `idsNasListas` ficar sem uso após a remoção, apague também a declaração dele.
 
-- [ ] **Step 2: Acrescente `estadoDePendencia` ao import de `_shared/fixtures.ts`**
+- [ ] **Step 2: Troque `resgateDeDetalhes` por `estadoDePendencia`**
 
-No topo de `index.ts`, o import de `../_shared/fixtures.ts` já traz `placar90Min`, `resgateDeDetalhes` e `rodadaFromTournamentName`. Acrescente `estadoDePendencia`. Se `resgateDeDetalhes` ficar sem uso após a Task, remova-o do import (a função continua existindo em `_shared` com seus testes).
+No topo de `index.ts`, o import de `../_shared/fixtures.ts` traz hoje `placar90Min`,
+`resgateDeDetalhes` e `rodadaFromTournamentName`. Remova `resgateDeDetalhes` e acrescente
+`estadoDePendencia`.
+
+`resgateDeDetalhes` era o único consumidor do bloco removido no Step 1 e fica sem nenhum uso
+em produção — `estadoDePendencia` (que devolve `"finalizado"` no mesmo caso) somado a
+`placar90Min` (que já calcula o placar) cobre exatamente o que ela fazia. **Apague a função**
+de `supabase/functions/_shared/fixtures.ts` e o `describe("resgateDeDetalhes", ...)` de
+`supabase/functions/_shared/__tests__/fixtures.test.ts`, junto com o nome no import do teste.
+Deixá-la seria código morto com testes que dão falsa sensação de cobertura.
+
+Run: `npm test -- fixtures`
+Expected: verde, sem os testes de `resgateDeDetalhes`.
 
 - [ ] **Step 3: Escreva a varredura**
 

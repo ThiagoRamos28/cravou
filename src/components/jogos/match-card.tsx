@@ -48,6 +48,8 @@ const STATUS_LABEL: Record<Match["status"], string> = {
   agendado: "Agendado",
   ao_vivo: "Ao vivo",
   finalizado: "Encerrado",
+  adiado: "Adiado",
+  cancelado: "Cancelado",
 };
 
 export function MatchCard({

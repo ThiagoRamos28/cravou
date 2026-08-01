@@ -3,7 +3,7 @@ import {
   fixtureToRow,
   resultToRow,
   placar90Min,
-  resgateDeDetalhes,
+  estadoDePendencia,
   rodadaFromTournamentName,
   type MatchRow,
   type FsMatchDetails,
@@ -163,11 +163,18 @@ async function fsGetDetails(matchId: string): Promise<FsMatchDetails> {
   return data as FsMatchDetails;
 }
 
-type SyncResumo = { total: number; upserted: number; pulados_manual: number };
+type SyncResumo = {
+  total: number;
+  upserted: number;
+  pulados_manual: number;
+  pulados_terminal: number;
+};
 
-// Sincroniza uma competição: ingere fixtures/results, resolve placar de 90min nas transições
-// para "finalizado" e resgata jogos "no limbo". Lança RateLimitError (429) ou Error em falha —
-// quem chama decide como responder. Todo upsert carrega `competicao_id`.
+// Sincroniza uma competição: ingere fixtures/results e resolve placar de 90min nas transições
+// para "finalizado". Lança RateLimitError (429) ou Error em falha — quem chama decide como
+// responder. Todo upsert carrega `competicao_id`. Jogos "no limbo" (adiados, cancelados ou
+// finalizados que a lista `results` ainda não refletiu) são tratados por `varrerPendencias`,
+// que roda uma vez por run sobre todas as competições.
 async function syncCompeticao(
   supabase: ReturnType<typeof createClient>,
   comp: Competicao,
@@ -224,12 +231,12 @@ async function syncCompeticao(
     .eq("placar_manual", true);
   const idsManuais = new Set((manuais ?? []).map((m) => m.api_fixture_id));
 
-  const paraUpsert = rows.filter((r) => !idsManuais.has(r.api_fixture_id));
+  const posManual = rows.filter((r) => !idsManuais.has(r.api_fixture_id));
 
-  const apiIds = paraUpsert.map((r) => r.api_fixture_id);
+  const apiIds = posManual.map((r) => r.api_fixture_id);
   const { data: existentes } = await supabase
     .from("matches")
-    .select("id, api_fixture_id, placar_casa, placar_fora, status, time_casa, time_fora, odds")
+    .select("id, api_fixture_id, placar_casa, placar_fora, status, time_casa, time_fora, odds, inicio_em")
     .in("api_fixture_id", apiIds.length > 0 ? apiIds : ["__nenhum__"]);
 
   const mapaExistentes = new Map(
@@ -243,9 +250,30 @@ async function syncCompeticao(
         time_casa: m.time_casa as string,
         time_fora: m.time_fora as string,
         odds: m.odds as unknown,
+        inicio_em: m.inicio_em as string,
       },
     ])
   );
+
+  // Um jogo adiado continua aparecendo em `fixtures` com o `inicio_em` antigo — é por isso que
+  // a varredura de pendências (`varrerPendencias`) não filtra por "veio na lista". Sem esta
+  // trava, o upsert abaixo reverteria esse jogo de volta para "agendado" a cada run —
+  // `fixtureToRow` grava status/placar/decisão fixos —, reabrindo `palpite_aberto()` (que só
+  // olha `inicio_em`) e, no caso de um jogo já finalizado, apagando o placar de 90min até a
+  // próxima varredura reescrevê-lo. Estados terminais/estacionados (finalizado, adiado,
+  // cancelado) são donos da varredura de pendências e do admin, não da lista de fixtures/
+  // results. A exceção é uma remarcação de verdade: quando a FlashScore publica um `inicio_em`
+  // novo para o jogo, isso precisa passar — senão o jogo fica congelado como "adiado" para
+  // sempre e a reabertura do palpite nunca acontece.
+  const paraUpsert = posManual.filter((r) => {
+    const ex = mapaExistentes.get(r.api_fixture_id);
+    if (!ex) return true;
+    const estadoTerminalOuParado =
+      ex.status === "finalizado" || ex.status === "adiado" || ex.status === "cancelado";
+    if (!estadoTerminalOuParado) return true;
+    const mesmoInicio = new Date(r.inicio_em).getTime() === new Date(ex.inicio_em).getTime();
+    return !mesmoInicio;
+  });
 
   // Odds pré-jogo: 1x por jogo agendado que entra na janela (~2h antes) e ainda não tem odds.
   // Snapshot único (não reatualiza). Lotes de 5 com delay, como o fetch de detalhes.
@@ -392,39 +420,102 @@ async function syncCompeticao(
     }
   }
 
-  // ── Resgate ativo de jogos "no limbo" ────────────────────────────────────────────────
-  // A lista `results` do torneio atrasa horas para incluir um jogo recém-encerrado. Nesse
-  // intervalo o jogo já saiu de `fixtures` mas ainda não entrou em `results` — fica invisível
-  // para o fluxo normal e o placar nunca atualiza sozinho. Aqui pegamos os `agendado` cujo
-  // horário já passou e que NÃO vieram em nenhuma das listas, e consultamos `matches/details`
-  // diretamente (fonte que já tem o resultado na hora). Escopo: só desta competição.
-  const idsNasListas = new Set(rows.map((r) => r.api_fixture_id));
-  const RESGATE_APOS_MS = 100 * 60 * 1000; // ~100min após o início: 90min + intervalo + folga
-  const limiteResgate = new Date(agora - RESGATE_APOS_MS).toISOString();
+  return {
+    total: rows.length,
+    upserted: paraUpsert.length,
+    pulados_manual: rows.length - posManual.length,
+    pulados_terminal: posManual.length - paraUpsert.length,
+  };
+}
 
-  const { data: candidatos } = await supabase
+// ── Varredura de pendências ────────────────────────────────────────────────────────────
+// Todo jogo ainda `agendado` muito depois do horário marcado é uma pendência: ou terminou e
+// a lista `results` do torneio ainda não o refletiu, ou foi adiado, ou foi cancelado.
+// `matches/details` sabe qual dos três na hora, e precisa só do api_fixture_id — por isso a
+// varredura roda sobre TODAS as competições, ativas ou não. Competição arquivada com jogo em
+// aberto foi o que deixou a final da Copa sem pontuar.
+// Sem filtro por "veio nas listas": um jogo adiado continua aparecendo em `fixtures` com o
+// horário antigo, e era esse filtro que o escondia da detecção.
+async function varrerPendencias(
+  supabase: ReturnType<typeof createClient>,
+  agora: number
+): Promise<{
+  candidatos: number;
+  finalizados: number;
+  adiados: number;
+  cancelados: number;
+  pendentes: number;
+}> {
+  const RESGATE_APOS_MS = 100 * 60 * 1000; // 90min + intervalo + folga
+  const limite = new Date(agora - RESGATE_APOS_MS).toISOString();
+
+  const { data: candidatos, error: candidatosErro } = await supabase
     .from("matches")
-    .select("id, api_fixture_id, placar_casa, placar_fora, time_casa, time_fora, fase")
-    .eq("competicao_id", comp.id)
+    .select("id, api_fixture_id, placar_casa, placar_fora, time_casa, time_fora, fase, status")
     .eq("status", "agendado")
     .eq("placar_manual", false)
-    .lt("inicio_em", limiteResgate)
+    .lt("inicio_em", limite)
     .order("inicio_em", { ascending: true });
 
-  const paraResgatar = (candidatos ?? []).filter(
-    (c) => !idsNasListas.has(c.api_fixture_id as string)
-  );
+  // Esta função é a única rede de segurança contra jogos travados. Uma falha silenciosa aqui
+  // (data null por erro de conexão/RLS/PostgREST) devolveria zeros indistinguíveis de "nada
+  // pendente" — melhor abortar a run e deixar o erro visível nos logs.
+  if (candidatosErro) {
+    console.error(
+      JSON.stringify({ evento: "pendencia_query_erro", mensagem: candidatosErro.message })
+    );
+    throw new Error(candidatosErro.message);
+  }
 
-  const LOTE_RESGATE = 5;
-  for (let i = 0; i < paraResgatar.length; i += LOTE_RESGATE) {
-    const lote = paraResgatar.slice(i, i + LOTE_RESGATE);
+  const pendentes = candidatos ?? [];
+  const contagem = { finalizados: 0, adiados: 0, cancelados: 0 };
+
+  const LOTE = 5;
+  for (let i = 0; i < pendentes.length; i += LOTE) {
+    const lote = pendentes.slice(i, i + LOTE);
     await Promise.all(
       lote.map(async (c) => {
         try {
           const detalhes = await fsGetDetails(c.api_fixture_id as string);
-          const resgate = resgateDeDetalhes(detalhes);
-          if (!resgate) return; // ainda não terminou
+          const destino = estadoDePendencia(detalhes);
+          if (!destino) return; // atrasado ou em andamento: a próxima run reavalia
 
+          if (destino === "adiado" || destino === "cancelado") {
+            const { error: upErr } = await supabase
+              .from("matches")
+              .update({ status: destino, atualizado_em: new Date().toISOString() })
+              .eq("id", c.id as string);
+            if (upErr) {
+              console.error(
+                JSON.stringify({
+                  evento: "pendencia_upsert_erro",
+                  api_fixture_id: c.api_fixture_id,
+                  destino,
+                  mensagem: upErr.message,
+                })
+              );
+              return;
+            }
+            if (destino === "adiado") contagem.adiados++;
+            else contagem.cancelados++;
+
+            await supabase.from("audit_log").insert({
+              user_id: null,
+              acao: `sync_jogo_${destino}`,
+              tabela: "matches",
+              registro_id: c.id,
+              dados_anteriores: { status: c.status },
+              dados_novos: {
+                status: destino,
+                time_casa: c.time_casa,
+                time_fora: c.time_fora,
+              },
+            });
+            return;
+          }
+
+          // destino === "finalizado": grava o placar de 90 min (regra do mata-mata).
+          const placar = placar90Min(detalhes);
           const rodada =
             c.fase === "mata-mata" && detalhes.tournament?.name
               ? rodadaFromTournamentName(detalhes.tournament.name)
@@ -434,21 +525,27 @@ async function syncCompeticao(
             .from("matches")
             .update({
               status: "finalizado",
-              placar_casa: resgate.placar_casa,
-              placar_fora: resgate.placar_fora,
-              decisao: resgate.decisao,
-              placar_penaltis_casa: resgate.placar_penaltis_casa,
-              placar_penaltis_fora: resgate.placar_penaltis_fora,
+              placar_casa: placar.placar_casa,
+              placar_fora: placar.placar_fora,
+              decisao: placar.decisao,
+              placar_penaltis_casa: placar.placar_penaltis_casa,
+              placar_penaltis_fora: placar.placar_penaltis_fora,
               ...(rodada !== undefined ? { rodada } : {}),
               atualizado_em: new Date().toISOString(),
             })
             .eq("id", c.id as string);
           if (upErr) {
             console.error(
-              JSON.stringify({ evento: "resgate_upsert_erro", api_fixture_id: c.api_fixture_id, mensagem: upErr.message })
+              JSON.stringify({
+                evento: "pendencia_upsert_erro",
+                api_fixture_id: c.api_fixture_id,
+                destino,
+                mensagem: upErr.message,
+              })
             );
             return;
           }
+          contagem.finalizados++;
 
           await supabase.from("audit_log").insert({
             user_id: null,
@@ -457,16 +554,17 @@ async function syncCompeticao(
             registro_id: c.id,
             dados_anteriores: { placar_casa: c.placar_casa, placar_fora: c.placar_fora },
             dados_novos: {
-              placar_casa: resgate.placar_casa,
-              placar_fora: resgate.placar_fora,
+              placar_casa: placar.placar_casa,
+              placar_fora: placar.placar_fora,
               time_casa: c.time_casa,
               time_fora: c.time_fora,
             },
           });
         } catch (e) {
+          if (e instanceof RateLimitError) throw e;
           console.error(
             JSON.stringify({
-              evento: "resgate_details_erro",
+              evento: "pendencia_details_erro",
               api_fixture_id: c.api_fixture_id,
               mensagem: e instanceof Error ? e.message : String(e),
             })
@@ -474,15 +572,20 @@ async function syncCompeticao(
         }
       })
     );
-    if (i + LOTE_RESGATE < paraResgatar.length) {
+    if (i + LOTE < pendentes.length) {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
 
+  // `pendentes` no retorno é o que sobrou sem resolver (erro de detalhes, ou `estadoDePendencia`
+  // devolveu null porque o jogo está atrasado ou em andamento) — não o total de candidatos que
+  // entraram na varredura. `candidatos` guarda esse total à parte, para o operador ver os dois.
   return {
-    total: rows.length,
-    upserted: paraUpsert.length,
-    pulados_manual: rows.length - paraUpsert.length,
+    candidatos: pendentes.length,
+    finalizados: contagem.finalizados,
+    adiados: contagem.adiados,
+    cancelados: contagem.cancelados,
+    pendentes: pendentes.length - contagem.finalizados - contagem.adiados - contagem.cancelados,
   };
 }
 
@@ -588,6 +691,20 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Roda uma vez por run, sobre todas as competições (inclusive arquivadas).
+  let pendencias;
+  try {
+    pendencias = await varrerPendencias(supabase, agora);
+  } catch (e) {
+    if (e instanceof RateLimitError) {
+      console.warn(JSON.stringify({ evento: "rate_limit", path: e.path, etapa: "pendencias" }));
+      return new Response(JSON.stringify({ ok: false, motivo: "429", path: e.path }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    throw e;
+  }
+
   // Marca o refresh completo (só no caminho de sucesso — 429/erro não chegam aqui).
   await supabase
     .from("sync_cache")
@@ -596,7 +713,7 @@ Deno.serve(async (req) => {
       { onConflict: "chave" }
     );
 
-  return new Response(JSON.stringify({ ok: true, competicoes: resumos }), {
+  return new Response(JSON.stringify({ ok: true, competicoes: resumos, pendencias }), {
     headers: { "Content-Type": "application/json" },
   });
 });

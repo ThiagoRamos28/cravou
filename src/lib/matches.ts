@@ -22,7 +22,7 @@ export type Match = {
   bandeira_casa: string | null;
   bandeira_fora: string | null;
   inicio_em: string;
-  status: "agendado" | "ao_vivo" | "finalizado";
+  status: "agendado" | "ao_vivo" | "finalizado" | "adiado" | "cancelado";
   placar_casa: number | null;
   placar_fora: number | null;
   odds: Odds | null;
@@ -77,6 +77,10 @@ export async function listarJogos(filtro?: {
   minutosCorte?: number;
   limite?: number;
   competicaoId?: string;
+  // Jogo adiado ou cancelado some da listagem: adiado não aconteceu e cancelado nunca vai
+  // acontecer, então nenhum dos dois é palpitável nem faz sentido no histórico. O /admin
+  // opta por vê-los para poder corrigir à mão.
+  incluirNaoJogaveis?: boolean;
 }): Promise<Match[]> {
   try {
     const supabase = await createClient();
@@ -87,6 +91,11 @@ export async function listarJogos(filtro?: {
     if (filtro?.soEncerrados) q = q.eq("status", "finalizado");
     const { data } = await q;
     let resultado = (data as Match[]) ?? [];
+    if (!filtro?.incluirNaoJogaveis) {
+      resultado = resultado.filter(
+        (m) => m.status !== "adiado" && m.status !== "cancelado"
+      );
+    }
     if (filtro?.soAbertos) {
       const corte = filtro.minutosCorte ?? 10;
       const agora = Date.now();
