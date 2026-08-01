@@ -5,7 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { COLUNAS_ICONE } from "@/components/ranking/colunas";
 import { avatarPadrao } from "@/lib/avatars";
-import type { RankingRow } from "@/lib/ranking";
+import type { RankingRow } from "@/lib/ranking-shared";
 
 export function RankingListaMobile({
   linhas,
