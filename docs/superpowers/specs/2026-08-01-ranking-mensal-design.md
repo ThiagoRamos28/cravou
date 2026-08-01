@@ -27,6 +27,7 @@ viram **abas na própria página** do ranking, e o seletor de competição do he
 | Abas de competição | **Entram nesta spec**, com o seletor do header oculto em `/ranking` |
 | Lista de meses e estado "fechado" | Nova função SQL `ranking_meses()` — não agregação em TypeScript |
 | Troca de aba | Escreve o cookie + `router.refresh()`, igual ao seletor do header |
+| Desempate | Cascata de 6 níveis por qualidade do acerto, **em todos os rankings** (Geral, T1, T2 e mensal) |
 
 ## Os dados de hoje
 
@@ -86,7 +87,28 @@ na tabela. O `left join` deixa `m.inicio_em` nulo, a comparação vira `NULL` e 
 exatamente o que `temporada_1`/`temporada_2` já fazem hoje, e para uma disputa mensal é o certo:
 quem não jogou não entra na disputa. No `geral` a pessoa continua aparecendo com 0 pontos.
 
-**2. Nova função `ranking_meses(p_competicao_id uuid)`.**
+**2. `ranking()` ganha a cascata de desempate.**
+
+Hoje o `order by` tem dois níveis (`pontos desc, cravadas desc`) e qualquer empate além disso
+deixa a ordem ao acaso do plano de execução — a mesma tabela pode sair em ordens diferentes em
+dois acessos. A cascata nova desce pela mesma hierarquia da pontuação: quem chegou mais perto no
+critério mais valioso passa na frente.
+
+```sql
+order by pontos desc, cravadas desc, acertos_saldo desc, acertos_resultado desc,
+         acertos_gols desc, erros asc, pr.apelido asc nulls last, pr.id asc
+```
+
+Os **seis primeiros são critérios de mérito**. Os dois últimos (`apelido`, `id`) existem só para
+a ordem ser estável entre acessos — não são desempate, e quem chega até eles está genuinamente
+empatado.
+
+Vale para **todos** os períodos, não só o mensal: um critério só para a galera aprender. Medido
+em 2026-08-01, isso **não muda nada em produção** — os quatro rankings existentes (Brasileirão
+geral, Copa geral, Copa T1, Copa T2) têm todos os `pontos` distintos, então nenhum par chega
+sequer ao segundo nível.
+
+**3. Nova função `ranking_meses(p_competicao_id uuid)`.**
 
 Retorna `mes text, jogos bigint, pendentes bigint, palpites bigint, fechado boolean`:
 
@@ -150,11 +172,12 @@ Conteúdo: os tipos `RankingRow`, `RankingPeriodo`, `MesRanking` e quatro funç�
 | `mesCorrenteBRT(agora: Date): string` | `YYYY-MM` no fuso `America/Sao_Paulo` |
 | `mesesVisiveis(meses, mesCorrente): MesRanking[]` | mantém quem tem `palpites > 0` **ou** é o mês corrente; ordena do mais recente para o mais antigo. Só filtra — nunca inventa um mês que não veio do banco, então um mês corrente sem jogo nenhum (junho, no Brasileirão) simplesmente não aparece |
 | `rotuloMes(mes, anoCorrente): string` | `"Agosto"` dentro do ano corrente, `"Dezembro/2025"` fora dele |
-| `campeaoDoMes(linhas): Campeao \| null` | `null` se a lista está vazia ou o topo tem 0 pontos; senão todos que empatam com a linha 1 em **pontos e cravadas** |
+| `campeaoDoMes(linhas): Campeao \| null` | `null` se a lista está vazia ou o topo tem 0 pontos; senão todos que empatam com a linha 1 nos **seis critérios de mérito** |
 
-`campeaoDoMes` reusa o desempate que a própria `ranking()` já aplica (`order by pontos desc,
-cravadas desc`): dois usuários com os mesmos pontos mas cravadas diferentes **não** são
-co-campeões — quem cravou mais ganha. Empate só quando os dois números batem.
+`campeaoDoMes` espelha exatamente a cascata da `ranking()`: só é co-campeão quem empata em
+pontos, cravadas, acertos de saldo, acertos de resultado, acertos de gols **e** erros. Quem
+perde em qualquer um desses degraus não divide o título — os dois últimos níveis do `order by`
+(`apelido`, `id`) são ordenação estável, não desempate, e por isso ficam de fora da comparação.
 
 `RankingPeriodo` passa a aceitar meses. A garantia real é o **regex em runtime**
 (`/^\d{4}-(0[1-9]|1[0-2])$/`), usado na validação do server action; o tipo TypeScript é
@@ -246,6 +269,15 @@ vê hoje, 1º/08**, quando agosto ainda não tem palpite nenhum.
 `CompeticaoSelectorSlot` — wrapper client com `usePathname()` que devolve `null` em `/ranking` e
 o `CompeticaoSelector` de sempre nas outras rotas. `site-header.tsx` passa a renderizar o slot.
 
+### `/regras`
+
+A cascata de desempate é regra de jogo, e hoje a `/regras` só documenta a pontuação. Ganha um
+bloco **"Critérios de desempate"** abaixo dos níveis de pontuação: uma lista ordenada com os seis
+critérios de mérito e uma linha final dizendo que quem empata em todos divide a posição.
+
+O bloco é o mesmo nas duas competições — o desempate não depende de formato. Só os *pontos* de
+cada nível variam por competição, e isso a página já trata.
+
 ### `src/app/ranking/actions.ts`
 
 A whitelist de três valores passa a aceitar também `/^\d{4}-(0[1-9]|1[0-2])$/`. Qualquer outra
@@ -256,7 +288,9 @@ há injeção — a validação é higiene.
 
 **Puros** — `src/lib/__tests__/ranking-shared.test.ts`: as quatro funções, incluindo os casos que
 os dados reais expõem (mês com jogo e zero palpite sai da lista; mês corrente sem palpite fica;
-meses não contíguos; empate em pontos com cravadas diferentes **não** é co-campeonato).
+meses não contíguos). Para `campeaoDoMes`, um teste por degrau da cascata: empate em pontos
+resolvido por cravadas, por saldo, por resultado, por gols e por erros — cada um com **um único**
+campeão — mais o caso de empate nos seis, com dois nomes na faixa.
 
 **Componentes** — um arquivo por componente novo (`MesSelector`, `FaixaCampeao` nos quatro
 estados, `CompeticaoTabs` incluindo os dois casos de borda, `CompeticaoSelectorSlot` nos dois
@@ -266,7 +300,9 @@ sub-controle".
 **SQL** — o projeto não tem harness de teste para migrations. Verificação por queries de
 conferência via MCP depois de aplicar: julho fecha; o ranking de julho bate com o geral (hoje são
 iguais, porque só julho tem palpite); março, abril e maio ficam fora da lista visível; a
-`ranking()` no `geral` devolve exatamente os mesmos números de antes da migration.
+`ranking()` no `geral` devolve exatamente os mesmos números **e a mesma ordem** de antes da
+migration, nos quatro rankings existentes (a ordem hoje não muda porque não há empate em pontos —
+foi conferido em 2026-08-01).
 
 ## Limites aceitos
 
