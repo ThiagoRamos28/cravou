@@ -310,8 +310,10 @@ foi conferido em 2026-08-01).
    campeão daquele mês muda retroativamente. Se isso incomodar, vira spec própria (tabela de
    campeões + job de congelamento).
 2. **Jogo adiado carrega o palpite junto.** Quando os 4 jogos de 29/07 forem remarcados para
-   agosto, o `inicio_em` muda e eles migram do balde de julho para o de agosto. Não mexe em
-   pontos (estão sem pontuar), mas muda o aproveitamento exibido nos dois meses.
+   agosto, o `inicio_em` muda e eles migram do balde de julho para o de agosto. Os 11 palpites
+   desses jogos têm `pontos` e `pontos_max` nulos — como `pontos_max` só é escrito junto com
+   `pontos`, a remarcação não muda pontos, aproveitamento nem campeão em nenhum dos dois meses.
+   O que muda é só `total_palpites` de cada balde, que não é renderizado em lugar nenhum da UI.
 3. **A feature vai parecer não fazer nada no dia em que subir.** Só julho tem palpite, então o
    ranking mensal de julho é idêntico ao Geral. O valor aparece quando agosto tiver jogo
    pontuado.
