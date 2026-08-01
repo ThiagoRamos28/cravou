@@ -1,221 +1,210 @@
 # Próximos passos — Cravou!
 
-Última atualização: 2026-07-31 (spec 1 **mergeada** em `master` — merge `84455c5`; spec 2 na
-branch `feat/listagens-jogos`, 6 tasks completas, aguardando merge)
+Última atualização: **2026-07-31**, fim de sessão. Retomar em **2026-08-01**.
 
-## Listagens de jogos: data, ordenação e paginação — spec 2 entregue (2026-07-31)
-
-Spec `docs/superpowers/specs/2026-07-31-listagens-jogos-design.md`, plano
-`docs/superpowers/plans/2026-07-31-listagens-jogos.md`. 6 tasks, **271 testes verdes**, build e
-lint sem problema novo. Executada **inline** (sem subagentes — limite mensal de gasto da conta).
-
-1. `src/lib/jogos/filtros.ts` — funções puras `diaSeguinte`, `limitesDeData`,
-   `statusPorSituacao`, mais `JOGOS_POR_PAGINA = 20` em `constantes.ts` (client-safe).
-2. `listarJogos` virou query de verdade: toda opção é cláusula PostgREST, **nada** em memória,
-   e devolve `{ jogos, total }` (total de `count: "exact"`). `minutosCorte` saiu da assinatura.
-3. `/jogos` — chips de situação (**"Abertos" virou "A fazer"**), intervalo de data, inverter
-   ordem, e "Carregar mais". `FiltroPeriodo` + hook `useNavegarFiltro` compartilhados.
-4. `/historico` — cruzamento jogos×palpites saiu do JavaScript para um embed
-   `predictions!inner`; **o resumo roda sobre o conjunto filtrado inteiro** e só a lista pagina.
-5. Landing — `apenasFuturos` + `competicaoId` + checagem de opt-in.
-6. Validação: nenhum `.filter()` sobrou dentro de `listarJogos`; os 5 consumidores adaptados.
-
-**Mudanças de comportamento visíveis:** o chip "Abertos" agora se chama **"A fazer"** e
-significa "não encerrados" (`status in ('agendado','ao_vivo')`) — o que também fecha um buraco
-em que um jogo a 10 min do apito desaparecia da aba. E o **resumo do `/historico` reflete o
-filtro**: filtrar julho mostra os pontos de julho, não o total.
-
-**Dívida que esta spec NÃO pagou:** `matches.rodada` continua vazio no Brasileirão, então não
-existe filtro por rodada. A API expõe o número no `tournament.name`
-(`"Serie A Betano - Round 21"`) — fica para uma spec futura.
-
-## Jogos adiados, cancelados e órfãos — spec 1 entregue e mergeada (2026-07-31)
-
-Spec `docs/superpowers/specs/2026-07-31-jogos-adiados-design.md`, plano
-`docs/superpowers/plans/2026-07-31-jogos-adiados.md`, ledger
-`.superpowers/sdd/2026-07-31-jogos-adiados/progress.md`. 5 tasks:
-
-1. `estadoDePendencia` (função pura) traduz `match_status` da FlashScore em
-   `finalizado | adiado | cancelado | null`.
-2. Migration 0025 (aplicada em prod): estados `adiado`/`cancelado` na constraint,
-   `predictions_select_started_matches` fecha o vazamento (jogo adiado/cancelado não libera
-   palpites alheios mesmo com `inicio_em` no passado), `ranking()` ignora cancelados, backfill
-   dos 4 jogos do Brasileirão (29/07) para `adiado`.
-3. `/jogos` e o composer do feed escondem `adiado`/`cancelado`; `/admin` mostra os dois com selo.
-4. `varrerPendencias`: varredura global no `sync-matches` (alcança competição arquivada — foi o
-   que deixou a final da Copa sem pontuar) + trava que impede o upsert normal de reverter um
-   estado terminal/estacionado de volta a `agendado`.
-5. **Deploy e validação em produção** (`sync-matches` v27 → **v28**). Verificado após o deploy:
-   os 4 jogos do Brasileirão seguem `adiado` (não reverteram), zero flip-flop no `audit_log`,
-   resposta do sync com `pendencias.pendentes: 0`. Relatório completo em
-   `.superpowers/sdd/2026-07-31-jogos-adiados/task-5-report.md`.
-
-**Mergeada em `master`** (merge `84455c5`, push `213abcc..84455c5`), com 239/239 testes no
-resultado mergeado.
-
-**Pendências desta spec:**
-- ⬜ Fumaça visual logado como `thiagorc85@gmail.com` (link mágico; atenção ao rate limit por
-  hora do Supabase): `/jogos` sem os 4 jogos de 29/07, `/admin` com selo "Adiado".
-- ⬜ **A revisão final da branch não rodou** — o limite mensal de gasto da conta derrubou os
-  subagentes. Testes, build e leitura manual do trecho sem cobertura substituíram
-  parcialmente, mas os *minors* adiados nunca foram triados por um revisor. Estão listados em
-  `.superpowers/sdd/2026-07-31-jogos-adiados/progress.md`, preservado de propósito. Pode rodar
-  depois sobre o diff `213abcc..84455c5`.
-- ⬜ Risco residual: `RateLimitError` é engolido no loop de `transicoes` do `sync-matches` — um
-  429 ali grava o placar **com** prorrogação, violando a regra dos 90 minutos, e agora não é
-  mais sobrescrito depois por causa da trava nova. Candidato a spec própria.
-
-### Fila de specs derivadas da sessão de 2026-07-31
-
-Ordem acordada: **1. adiados** → 2. listagens → 3. ranking mensal → 4. alertas. Animações e
-"cara divertida" ficam **fora da fila** (por último, sem posição numerada — não faz sentido
-animar telas que ainda vão mudar de estrutura nas specs 2-4).
-
-1. ✅ **Adiados, cancelados e órfãos** — entregue e mergeada.
-2. ✅ **Listagens** — entregue na branch `feat/listagens-jogos`. A regra `soAbertos` foi
-   eliminada aqui, como previsto: virou `statusPorSituacao` na query.
-3. ⬜ **Ranking mensal** (próxima) do Brasileirão — ver detalhe na seção mais abaixo. A função
-   `ranking(p_competicao_id, p_periodo)` já aceita `p_periodo`; basta estender o `case` para
-   períodos mensais e o sub-controle oferecer "Geral + um por mês" quando a competição é o
-   Brasileirão. Encaixa no design de abas por competição já fechado (e não implementado).
-4. ⬜ **Alertas** — avisar quem aceitar que tem jogo prestes a começar e ainda sem palpite.
-   Absorve "notificações push". Inclui avisar quando um jogo é adiado ou remarcado.
-- ⬜ Animações / "cara divertida" — fora da fila numerada, retomar só depois que as telas de
-  listagem/ranking estabilizarem de estrutura.
-
----
-
-**Nesta sessão (pós-forma-recente):** corrigimos **dois bugs de ranking** relatados pelo
-Thiago e limpamos a identidade da Copa. Antes: `feat/multi-competicao` (commit `fb8b86f`),
-forma recente (`3d518e6`), sync-matches v27, migrations 0019–0024, bucket `escudos`. 228 testes
-verdes + build ok.
-
-- **BUG CORRIGIDO — ranking vazava entre competições** (commit `afc37ab`, migration **0024**
-  aplicada em prod). O `/ranking` do Brasileirão mostrava 211 pts em 2 jogos porque
-  `ranking(competicao)` somava Copa+Brasileirão no período `'geral'` (filtro no ON do LEFT JOIN
-  não filtra os agregados de `predictions`). Corrigido com pré-filtro via `exists`; teste de
-  regressão pgTAP em `supabase/tests/ranking_isolacao_competicao.test.sql` (3/3 ok). Ver
-  memória `project_ranking_vazamento_competicao`.
-- **BUG CORRIGIDO — trocar competição exigia F5** (commit `59c2f38`). `RankingContent` usava
-  `useState(linhasIniciais)` que ignora novo valor inicial após montado. Fix: `key={atual.id}`
-  remonta ao trocar competição.
-- **Identidade neutralizada** (commit `59c2f38`): metadata, footer, hero e features não falam
-  mais "Bolão da Copa" — agora é bolão de futebol multi-competição. Regras de mata-mata em
-  `/regras` e no popover de temporadas ficaram (só aparecem no contexto da Copa arquivada).
-
-> **Login de teste:** a conta certa do Cravou! é **`thiagorc85@gmail.com`** (NÃO
-> `informatica@disdal.com.br`, que veio do bloco `# userEmail` e é de outro contexto). Login por
-> **link mágico** via `agent-browser`, mas atenção ao **rate limit por hora** do Supabase (vários
-> envios seguidos travam com "Não foi possível enviar o link"). Nesta sessão não deu pra verificar
-> ao vivo por causa disso — o Thiago confirmou os fixes no próprio navegador logado.
+> **O pedido principal do Thiago ainda não foi feito: o RANKING POR MÊS.** Ele veio primeiro na
+> conversa e acabou em terceiro na fila de specs. É o §1 abaixo e deve ser a primeira coisa
+> amanhã.
 
 ## Estado atual
 
-- **Multi-competição** (Copa arquivada + Brasileirão ativo): ✅ em prod. Seletor no header,
-  ranking/jogos/histórico/regras por competição, opt-in em `/perfil/competicoes`, sync em loop.
-  Brasileirão populado (221 jogos).
-- **Escudos no Storage**: ✅ bucket público `escudos` + espelhamento inline no `sync-matches`.
-  325 escudos servidos do nosso storage (FlashScore dá 403 em hotlink).
-- **Odds nos jogos** (1ª spec futura): ✅ código completo + fix + `sync-matches` v27 deployado.
-  Migration 0023 (`matches.odds jsonb`) aplicada. Ainda **sem dados de odds** em prod (só
-  populam ~2h antes de um jogo) — falta só ver funcionando (§2).
-- **Últimos 5 jogos por equipe (V-E-D)** (2ª spec futura): ✅ **concluída e deployada**.
-  Forma calculada do nosso próprio banco (zero quota, sem migration, sem tocar no sync).
-  Badges V/E/D com letra (acessível) + detalhe recolhível no card de jogos não finalizados.
-  Spec `docs/superpowers/specs/2026-07-17-forma-recente-design.md`, plano
-  `docs/superpowers/plans/2026-07-17-forma-recente.md`.
-- **Palpites vazados no Brasileirão** (janela em que o site esteve quebrado): ✅ investigado.
-  15 palpites de 3 usuários feitos antes do opt-in, mas todos com corte respeitado (sem
-  vantagem) e os 3 acabaram entrando no Brasileirão. **Decisão: manter todos** — nada foi
-  alterado no banco.
+- **Spec 1 — jogos adiados/cancelados/órfãos:** ✅ mergeada em `master` (`84455c5`) e em
+  produção. Edge function `sync-matches` **v28**. Migration **0025** aplicada.
+- **Spec 2 — listagens (data, ordenação, paginação):** ✅ código completo na branch
+  **`feat/listagens-jogos`** (6 commits, `b75e83e`..`b4e66d3`), 271 testes verdes, build e lint
+  sem problema novo. **NÃO mergeada** — o Thiago pediu para segurar até a revisão final.
+- **`master` tem 3 commits de docs não enviados** (`ecdea3a`, `369fa09`, `84ade22` — a spec e o
+  plano das listagens). Só documentação; nada de código.
+- **Spec 3 — ranking mensal:** ⬜ não iniciada. É o §1.
+- **Spec 4 — alertas:** ⬜ não iniciada. §5.
+- **Animações / "cara divertida":** ⬜ fora da fila, para o fim (§6).
+- Branches antigas que sobraram no repo e podem ser apagadas: `feat/multi-competicao`,
+  `feat/visual-ux-adjustments` (trabalho já mergeado há sessões).
 
-## 1. UX do ranking — abas por competição (opcional, era design, não bug)
+---
 
-**A dor central ("211 pts em 2 jogos") era o BUG de vazamento — já corrigido acima.** O que
-sobra aqui é **polimento de UX**, não urgência. No brainstorm desta sessão fechamos um design
-(não implementado):
+## 1. RANKING POR MÊS do Brasileirão ← começar por aqui
 
-- Abas por competição **na própria página** do ranking (estilo `FeedTabs`), com as competições
-  **ativas**; Copa (arquivada) numa seção discreta "Temporadas anteriores".
-- T1/T2/Geral vira **sub-controle** que só aparece quando a competição é a Copa (`formato='fases'`).
-- Seletor de competição do header **oculto só na rota `/ranking`** (wrapper client com `usePathname`).
-- **Escopo:** só o ranking, por ora (jogos/histórico/regras seguem com o seletor do header).
-- É **frontend puro** — a server action `buscarRanking(competicaoId, periodo)` já existe.
+O que o Thiago quer: além do ranking Geral, um ranking por mês. Não é bug, é feature nova.
 
-Arquivos: `src/app/ranking/page.tsx`, `src/components/ranking/ranking-content.tsx`,
-`src/components/ranking/season-selector.tsx`, `src/components/competicao/competicao-selector.tsx`.
-Retomar via `superpowers:writing-plans` (o design já está acordado) → execução.
+### Por que é barato
 
-**Ideia relacionada (futura) — ranking MENSAL do Brasileirão:** além do Geral, um ranking por
-mês (jan, fev, …). É o mesmo mecanismo do sub-seletor de temporada da Copa — a função
-`ranking(p_competicao_id, p_periodo)` já aceita `p_periodo`; bastaria estender o `case` para
-períodos mensais (filtrando `m.inicio_em` pelo mês) e o sub-controle da página oferecer
-"Geral + um por mês" quando a competição é o Brasileirão (assim como oferece T1/T2/Geral para a
-Copa). Encaixa naturalmente no redesenho de abas acima — desenhar junto.
+A função SQL **já aceita o parâmetro**: `ranking(p_competicao_id uuid, p_periodo text default
+'geral')`. Hoje o `case p_periodo` conhece só três valores:
 
-## 2. Ver as odds funcionando na UI (demo)
+```sql
+where case p_periodo
+  when 'temporada_1' then m.inicio_em <  timestamptz '2026-07-04 00:00:00-03'
+  when 'temporada_2' then m.inicio_em >= timestamptz '2026-07-04 00:00:00-03'
+  else true
+end
+```
 
-Odds só populam ~2h antes de um jogo do Brasileirão (por design, quota-friendly). Para ver antes:
-- Esperar um jogo entrar na janela de 2h e conferir `/jogos` (card mostra "ver odds" recolhível).
-- OU semear um snapshot. Valores reais bet365 de `80AlZsl4` (Vitória×Vasco), já validados:
-  `{casa 2.32, empate 3.0, fora 3.3, over25 2.05, under25 1.8, ambas_sim 1.8, ambas_nao 1.95,
-  bookmaker bet365}`. **O UPDATE direto em `matches` foi bloqueado pelo classificador** (dado
-  de produção) — precisa de autorização explícita do Thiago para semear.
+Estender para períodos mensais (ex.: `p_periodo = '2026-08'`) é acrescentar um ramo que filtra
+`m.inicio_em` pelo mês em BRT. Versão vigente: `supabase/migrations/0025_jogos_adiados.sql`.
 
-## 3. Identidade multi-competição — rebrand completo (spec própria, futura)
+⚠️ **Ao reescrever `ranking()`, preserve duas coisas** — cada uma conserta um bug real:
+1. o pré-filtro de `predictions` via `exists` (migration **0024**), que impede pontos vazarem
+   entre competições;
+2. o `and mm.status <> 'cancelado'` dentro desse `exists` (migration **0025**).
 
-Nesta sessão já **removemos as referências textuais à Copa** (metadata, footer, hero, features).
-O que sobra é o rebrand mais profundo, se/quando quiser: ícone (hoje `Trophy` genérico), tom
-visual, revisão da landing inteira para comunicar "plataforma de bolões" (não um evento único),
-e talvez um nome/tagline definitivos. É trabalho de design/copy — fazer via
-`superpowers:brainstorming` como projeto próprio.
+### O achado que muda o desenho (levantado em 2026-07-31)
 
-## 4. Pontuação por competição — dívida técnica (backend, futura)
+Distribuição real dos jogos do Brasileirão por mês:
 
-Hoje `app_config` é **global** e `recalcular_pontos` escolhe o modelo **pela data do jogo**
-(corte 04/07). O Brasileirão só recebe Modelo A (15/7/4/1) porque todos os seus jogos são
-pós-04/07 — **coincidência de calendário**, não isolamento real. Riscos: (a) impossível dar
-regras diferentes por competição; (b) mexer em `/admin/config` reescreve o modelo de todas as
-competições "atuais" e o trigger re-roda no sync (mecanismo que já corrompeu a T1 uma vez —
-ver memória `project_virada_modelo_sql_manual`). **Não é bug ativo** (os rankings já não somam
-entre si desde a 0024), mas quando o Brasileirão precisar divergir de regras, fazer spec de
-`app_config` (ou tabela) **por competição** + `recalcular_pontos` escolhendo o modelo pela
-COMPETIÇÃO, não pela data.
+| Mês | Jogos | Finalizados | Usuários com palpite |
+|---|---|---|---|
+| 2026-03 | 9 | 9 | **0** |
+| 2026-04 | 50 | 50 | **0** |
+| 2026-05 | 50 | 50 | **0** |
+| 2026-07 | 160 | 149 | **7** |
+| 2026-08 | 40 | 0 | 0 |
+| 2026-09 | 30 | 0 | 0 |
+| 2026-10 | 50 | 0 | 0 |
 
-## 5. Fumaça visual do site publicado (opcional)
+**O bolão só entrou no Brasileirão em julho.** Consequências para o design:
 
-Ainda não feita visualmente — **login travou no rate limit por hora** do Supabase (ver aviso no
-topo; conta certa é `thiagorc85@gmail.com`). Depois, abrir o site em produção e
-conferir: header com **seletor de competição**; `/ranking` com dados; `/jogos` **não** mostra
-Brasileirão pra quem não fez opt-in; e o novo bloco de **forma** aparecendo nos cards de jogos
-agendados do Brasileirão (badges V/E/D + "ver forma"). Feito via automação de browser
-(`agent-browser`). Login por **link mágico**: disparar em `/entrar` → aba "Link mágico" e o
-Thiago cola o link recebido.
+- O seletor de meses **não pode** listar "meses que têm jogo" — março, abril e maio têm jogo
+  finalizado e **zero palpite**, então a galera abriria Março e veria um ranking vazio. Liste
+  meses que têm **palpite** (ou jogo finalizado *e* palpite).
+- **Junho não existe** na lista: os meses não são contíguos, o seletor não pode assumir
+  sequência nem preencher buracos.
+- Hoje, na prática, o ranking mensal de julho **é igual ao geral**, porque só julho tem palpite.
+  O valor real aparece quando agosto fechar. Vale dizer isso ao Thiago para a expectativa não
+  se descolar — a feature vai parecer "não fazer nada" no dia em que subir.
 
-## 6. Encerramento (feito em sessões anteriores)
+### Onde mexer no frontend
 
-**Registrar a feature "forma recente" no Obsidian Vault** — ✅ FEITO. A nota
-`Projetos/Pessoais/Cravou!.md` foi atualizada com a forma recente + backfill de
-multi-competição, escudos e odds (que estavam faltando).
+| Arquivo | O que é hoje |
+|---|---|
+| `src/lib/ranking.ts` | `listarRanking(competicaoId, periodo)`; o tipo `RankingPeriodo` só tem `"geral" \| "temporada_1" \| "temporada_2"` — precisa acomodar os meses |
+| `src/components/ranking/season-selector.tsx` | `OPCOES` fixas com os 3 períodos + popover explicando os **dois modelos de pontuação da Copa** (conteúdo específico da Copa, não faz sentido no Brasileirão) |
+| `src/components/ranking/ranking-content.tsx` | só renderiza o `SeasonSelector` quando `competicao.formato === "fases"` — por isso o Brasileirão hoje **não tem sub-seletor nenhum** |
+| `src/app/ranking/page.tsx` | busca `listarRanking(atual.id, "geral")` e passa `key={atual.id}` ao `RankingContent` |
+
+O sub-controle precisa ser **por formato**: `'fases'` (Copa) → T1/T2/Geral; `'pontos-corridos'`
+(Brasileirão) → Geral + um por mês.
+
+### Design vizinho, já acordado e nunca implementado
+
+Na sessão de 2026-07-17 fechamos (sem implementar) o redesenho de **abas por competição na
+própria página do ranking**: abas com as competições ativas, Copa numa seção discreta
+"Temporadas anteriores", o T1/T2/Geral virando sub-controle só da Copa, e o seletor de
+competição do header **oculto na rota `/ranking`** (wrapper client com `usePathname`). É
+frontend puro — `buscarRanking(competicaoId, periodo)` já existe como server action.
+**Desenhar as duas coisas juntas**, já que ambas mexem no mesmo sub-controle.
+
+### Como começar
+
+Brainstorming → spec em `docs/superpowers/specs/2026-08-01-ranking-mensal-design.md` → plano em
+`docs/superpowers/plans/`. A tabela acima já responde a maior parte das perguntas de dados.
+
+---
+
+## 2. Mergear a spec 2 (`feat/listagens-jogos`)
+
+Decisão do Thiago em 2026-07-31: **segurar o merge** até a revisão final. O código está pronto e
+verificado (271 testes, build, lint sem novidade), só não foi revisado por outro agente.
+
+Quando for mergear, seguir o que foi feito na spec 1: `git merge --no-ff`, rodar `npm test` **no
+resultado mergeado**, e só então `git push origin master` (a Vercel deploya no push).
+
+**Mudanças de comportamento que a galera vai notar** — vale avisar no grupo:
+- O chip "Abertos" virou **"A fazer"**, e agora significa "não encerrados"
+  (`status in ('agendado','ao_vivo')`): inclui jogo ao vivo e jogo aguardando resultado. De
+  quebra fecha um buraco em que um jogo a 10 min do apito desaparecia da aba.
+- O **resumo do `/historico` passou a refletir o filtro**: filtrar julho mostra os pontos de
+  julho, não o total de sempre.
+
+---
+
+## 3. Revisão final das duas branches — não rodou
+
+O **limite mensal de gasto da conta** derrubou os subagentes no fim da sessão de 31/07. Isso
+atingiu:
+
+- **Spec 1:** a revisão final da branch não aconteceu. Rodei testes, build e leitura manual do
+  trecho sem cobertura, mas os *minors* adiados ao longo das 5 tasks **nunca foram triados por
+  um revisor**. Lista completa em `.superpowers/sdd/2026-07-31-jogos-adiados/progress.md`
+  (preservado de propósito — não apagar antes da revisão). Rodar sobre `213abcc..84455c5`.
+- **Spec 2:** executada **inline**, sem o ciclo implementador → revisor. Três tropeços foram
+  achados por mim durante a execução (tipo `Palpite` inventado onde o certo era `Prediction`,
+  dois mocks faltando, asserção assumindo texto único num card que repete o nome do time).
+  Rodar sobre `master..feat/listagens-jogos`.
+
+Quando o limite renovar, essa é a primeira coisa depois do §1.
+
+---
+
+## 4. Fumaça visual em produção (spec 1)
+
+Nunca feita ao vivo. Logado como **`thiagorc85@gmail.com`** (NÃO `informatica@disdal.com.br`,
+que vem do bloco `# userEmail` e é de outro contexto), conferir:
+
+- `/jogos` do Brasileirão **não** mostra os 4 jogos de 29/07 (Atlético-MG×Bragantino,
+  Chapecoense×Vasco, São Paulo×Santos, Botafogo×Grêmio);
+- `/admin` mostra os 4 com o selo **Adiado**;
+- `/ranking` da Copa tem a final pontuada (ASVEZVEM +4, Luiz +1).
+
+Login por **link mágico** via `agent-browser` — atenção ao **rate limit por hora** do Supabase
+(vários envios seguidos travam com "Não foi possível enviar o link").
+
+---
+
+## 5. Alertas de jogo sem palpite (spec 4)
+
+A maior das quatro: sistema novo, não ajuste. Avisar quem optar por receber que tem jogo perto do
+corte e ainda sem palpite. Decisões abertas: canal (e-mail? push? in-app?), opt-in por usuário,
+agendamento (o `pg_cron` já existe para o sync), e deduplicação para não virar spam. Absorve o
+item antigo "notificações push (pré-corte do palpite)". Inclui também avisar quando um jogo é
+**adiado ou remarcado** — ficou explicitamente fora da spec 1.
+
+---
+
+## 6. Animações / "cara divertida"
+
+Pedido do Thiago, deixado deliberadamente para o fim e **fora da fila numerada**: as specs 2 e 3
+mudam a estrutura das telas de listagem e ranking, e animar antes é retrabalho garantido. O
+projeto já usa Framer Motion respeitando `prefers-reduced-motion`, então a base existe.
+
+---
+
+## Dívidas técnicas conhecidas (nenhuma é bug ativo)
+
+- **`RateLimitError` engolido no loop de `transicoes`** do `sync-matches`
+  (`supabase/functions/sync-matches/index.ts`, ~linha 347): um 429 ali faz o jogo ser gravado com
+  o placar **cheio** e `decisao: 'normal'` — errado para mata-mata pela regra dos 90 minutos — e
+  agora, com a trava anti-reversão da spec 1, isso **não é mais sobrescrito depois**. Candidato a
+  spec própria. Pré-existente.
+- **`matches.rodada` vazio no Brasileirão.** A API expõe o número no `tournament.name`
+  (`"Serie A Betano - Round 21"`). Sem isso não há filtro por rodada — ficou fora da spec 2.
+- **Correção de horário em jogo já finalizado** seria lida como remarcação pela trava da spec 1,
+  zerando o placar (e os pontos) até a varredura re-finalizar. Improvável, auto-curável em ≤15
+  min, mas transitoriamente visível no ranking.
+- **`app_config` é global.** `recalcular_pontos` escolhe o modelo pela **data do jogo** (corte
+  04/07), não pela competição. O Brasileirão só recebe Modelo A (15/7/4/1) por coincidência de
+  calendário. Quando ele precisar divergir de regras, fazer spec de config **por competição**.
+  Ver memória `project_virada_modelo_sql_manual`.
+- Varredura de pendências sem piso de data nem `.limit()`: jogo cujo `match_status` nunca resolve
+  vira candidato permanente, 1 chamada de API por run para sempre.
+
+---
 
 ## Referências úteis para retomar
 
-- `.superpowers/sdd/progress.md` — ledger detalhado (commits por task, decisões, notas).
-- `docs/superpowers/specs/2026-07-16-odds-jogos-design.md` — spec das odds.
-- `docs/superpowers/plans/2026-07-16-odds-jogos.md` — plano das odds (6 tasks).
-- `docs/superpowers/specs/2026-07-17-forma-recente-design.md` + `docs/superpowers/plans/2026-07-17-forma-recente.md` — forma recente (✅ entregue).
-- `docs/superpowers/specs/2026-07-16-multi-competicao.md` — spec multi-competição; seção "Fora
-  de escopo" lista as specs futuras (odds ✅ e últimos 5 jogos ✅ — ambas concluídas).
-- `scratchpad/build_deploy.py` — gera o payload de deploy do `sync-matches` a partir do disco.
-- `CLAUDE.md` / `AGENTS.md` — convenções do projeto (Next.js 16 com breaking changes, fuso BRT).
-
-## Notas de conhecimento (para não reaprender)
-
-- **sync-matches deploy**: MCP `deploy_edge_function` (server `supabase-cravou`), 5 arquivos,
-  `entrypoint_path: source/index.ts`, `import_map_path: source/deno.json`, `verify_jwt: false`,
-  `_shared` um nível acima do entrypoint. Deno/CLI indisponíveis localmente — usar MCP.
-- **Disparar o sync manualmente** (sem expor o secret): `do $$ declare cmd text; begin select
-  command into cmd from cron.job where jobid=1; execute cmd; end $$;` — e antes, se quiser forçar,
+- `docs/superpowers/specs/` e `docs/superpowers/plans/` — specs e planos por data. Os de 31/07:
+  `2026-07-31-jogos-adiados-*` e `2026-07-31-listagens-jogos*`.
+- `.superpowers/sdd/2026-07-31-jogos-adiados/progress.md` — ledger da spec 1: minors adiados,
+  riscos residuais e desvios de processo. **Não apagar** antes da revisão final.
+- Nota do vault: `D:\Obsidian\vault-thiago\Projetos\Pessoais\Cravou!.md` — o que **já foi feito e
+  aprendido** (este arquivo é sobre o que **falta**).
+- `CLAUDE.md` / `AGENTS.md` — convenções: Next.js 16 com breaking changes (ler
+  `node_modules/next/dist/docs/` antes de usar API do Next), fuso `America/Sao_Paulo`, TDD,
+  trailer de commit.
+- **Deploy do `sync-matches`:** MCP `deploy_edge_function`, 5 arquivos, `entrypoint_path:
+  source/index.ts`, `import_map_path: source/deno.json`, `verify_jwt: false`, `_shared` um nível
+  acima do entrypoint. Deno e Supabase CLI **não** estão instalados nesta máquina.
+- **Disparar o sync manualmente:** `do $$ declare cmd text; begin select command into cmd from
+  cron.job where jobid=1; execute cmd; end $$;` — e antes, para forçar,
   `delete from sync_cache where chave='ultimo_refresh';`.
-- **Brasileirão fs_tournament_url** = `/football/brazil/serie-a-betano/` (path em inglês, não a
-  URL .com.br).
+- **Brasileirão `fs_tournament_url`** = `/football/brazil/serie-a-betano/` (path em inglês).
