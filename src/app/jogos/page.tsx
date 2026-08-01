@@ -7,6 +7,7 @@ import { JogosFiltro } from "@/components/jogos/jogos-filtro";
 import { NovidadesModal } from "@/components/novidades-modal";
 import { getSessao } from "@/lib/auth/profile";
 import { listarJogos, listarFormaCompeticao } from "@/lib/matches";
+import type { Situacao } from "@/lib/jogos/filtros";
 import { listarMeusPalpites, getMinutosCorte } from "@/lib/predictions";
 import {
   listarCompeticoes,
@@ -25,9 +26,10 @@ export default async function JogosPage({
   if (!sessao) redirect("/entrar");
 
   const { soAbertos, encerrados } = await searchParams;
-  const soEncerradosAtivo = encerrados === "1";
-  // Padrão: mostrar jogos abertos/ao vivo, a menos que o usuário opte por ver todos (?soAbertos=0)
-  const soAbertosAtivo = !soEncerradosAtivo && soAbertos !== "0";
+  // Padrão: jogos que ainda não terminaram, a menos que se peça outra coisa.
+  // A Task 3 troca estes searchParams por `situacao` direta.
+  const situacao: Situacao =
+    encerrados === "1" ? "encerrados" : soAbertos === "0" ? "todos" : "a_fazer";
 
   const [todas, optIns, cookieStore] = await Promise.all([
     listarCompeticoes(),
@@ -39,15 +41,10 @@ export default async function JogosPage({
   const participando = atual ? optIns.includes(atual.slug) : false;
 
   const minutosCorte = await getMinutosCorte();
-  const [jogos, palpites] = await Promise.all([
+  const [{ jogos }, palpites] = await Promise.all([
     atual
-      ? listarJogos({
-          soAbertos: soAbertosAtivo,
-          soEncerrados: soEncerradosAtivo,
-          minutosCorte,
-          competicaoId: atual.id,
-        })
-      : Promise.resolve([]),
+      ? listarJogos({ competicaoId: atual.id, situacao, limite: 500 })
+      : Promise.resolve({ jogos: [], total: 0 }),
     listarMeusPalpites(),
   ]);
 
@@ -79,12 +76,15 @@ export default async function JogosPage({
           </div>
         ) : (
           <>
-            <JogosFiltro soAbertos={soAbertosAtivo} soEncerrados={soEncerradosAtivo} />
+            <JogosFiltro
+              soAbertos={situacao === "a_fazer"}
+              soEncerrados={situacao === "encerrados"}
+            />
             {jogos.length === 0 ? (
               <p className="text-muted-foreground">
-                {soAbertosAtivo
+                {situacao === "a_fazer"
                   ? "Nenhum jogo aberto para palpite no momento."
-                  : soEncerradosAtivo
+                  : situacao === "encerrados"
                     ? "Nenhum jogo encerrado ainda."
                     : "Nenhum jogo encontrado."}
               </p>

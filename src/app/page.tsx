@@ -6,7 +6,6 @@ import { CtaSection } from "@/components/landing/cta-section";
 import { ProximosJogos } from "@/components/landing/proximos-jogos";
 import { getSessao } from "@/lib/auth/profile";
 import { listarJogos, type Match } from "@/lib/matches";
-import { getMinutosCorte } from "@/lib/predictions";
 
 export default async function Home() {
   const sessao = await getSessao();
@@ -14,8 +13,9 @@ export default async function Home() {
 
   let proximosJogos: Match[] = [];
   if (logado) {
-    const mc = await getMinutosCorte();
-    proximosJogos = await listarJogos({ soAbertos: true, minutosCorte: mc, limite: 6 });
+    // A Task 5 acrescenta competição + opt-in + apenasFuturos aqui.
+    const r = await listarJogos({ situacao: "a_fazer", limite: 6 });
+    proximosJogos = r.jogos;
   }
 
   return (

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { palpiteAberto } from "@/lib/palpites/corte";
+import { limitesDeData, statusPorSituacao, type Situacao } from "@/lib/jogos/filtros";
+import { JOGOS_POR_PAGINA } from "@/lib/jogos/constantes";
 
 export type Odds = {
   casa: string | null;
@@ -69,48 +70,58 @@ export function calcularForma(
 const COLS =
   "id, fase, rodada, time_casa, time_fora, bandeira_casa, bandeira_fora, inicio_em, status, placar_casa, placar_fora, odds";
 
+// Toda opção aqui vira cláusula PostgREST — NENHUMA filtragem em memória. Um `.filter()` sobre
+// o resultado depois do `.range()` cortaria a página errada: o banco devolveria 20 linhas e o
+// filtro removeria algumas, entregando menos que o pedido e um `total` inconsistente.
 export async function listarJogos(filtro?: {
+  competicaoId?: string;
   fase?: string;
   rodada?: string;
-  soAbertos?: boolean;
-  soEncerrados?: boolean;
-  minutosCorte?: number;
+  situacao?: Situacao;
+  de?: string;
+  ate?: string;
+  ordem?: "asc" | "desc";
+  offset?: number;
   limite?: number;
-  competicaoId?: string;
+  apenasFuturos?: boolean;
   // Jogo adiado ou cancelado some da listagem: adiado não aconteceu e cancelado nunca vai
   // acontecer, então nenhum dos dois é palpitável nem faz sentido no histórico. O /admin
   // opta por vê-los para poder corrigir à mão.
   incluirNaoJogaveis?: boolean;
-}): Promise<Match[]> {
+}): Promise<{ jogos: Match[]; total: number }> {
   try {
+    const situacao = filtro?.situacao ?? "a_fazer";
+    const offset = filtro?.offset ?? 0;
+    const limite = filtro?.limite ?? JOGOS_POR_PAGINA;
+    const ascendente = (filtro?.ordem ?? "asc") === "asc";
+
     const supabase = await createClient();
-    let q = supabase.from("matches").select(COLS).order("inicio_em", { ascending: true });
+    let q = supabase
+      .from("matches")
+      .select(COLS, { count: "exact" })
+      .order("inicio_em", { ascending: ascendente });
+
     if (filtro?.competicaoId) q = q.eq("competicao_id", filtro.competicaoId);
     if (filtro?.fase) q = q.eq("fase", filtro.fase);
     if (filtro?.rodada) q = q.eq("rodada", filtro.rodada);
-    if (filtro?.soEncerrados) q = q.eq("status", "finalizado");
-    const { data } = await q;
-    let resultado = (data as Match[]) ?? [];
-    if (!filtro?.incluirNaoJogaveis) {
-      resultado = resultado.filter(
-        (m) => m.status !== "adiado" && m.status !== "cancelado"
-      );
+
+    const status = statusPorSituacao(situacao, filtro?.incluirNaoJogaveis ?? false);
+    if (status) {
+      q = status.length === 1 ? q.eq("status", status[0]) : q.in("status", status);
     }
-    if (filtro?.soAbertos) {
-      const corte = filtro.minutosCorte ?? 10;
-      const agora = Date.now();
-      resultado = resultado.filter(
-        (m) =>
-          m.status !== "finalizado" &&
-          (m.status === "ao_vivo" ||
-            palpiteAberto(m.inicio_em, corte) ||
-            new Date(m.inicio_em).getTime() <= agora)
-      );
-    }
-    if (filtro?.limite) resultado = resultado.slice(0, filtro.limite);
-    return resultado;
+
+    const { gte, lt } = limitesDeData(filtro?.de, filtro?.ate);
+    if (gte) q = q.gte("inicio_em", gte);
+    if (lt) q = q.lt("inicio_em", lt);
+
+    if (filtro?.apenasFuturos) q = q.gt("inicio_em", new Date().toISOString());
+
+    q = q.range(offset, offset + limite - 1);
+
+    const { data, count } = await q;
+    return { jogos: (data as Match[]) ?? [], total: count ?? 0 };
   } catch {
-    return [];
+    return { jogos: [], total: 0 };
   }
 }
 

@@ -28,8 +28,11 @@ export default async function HistoricoPage() {
   const visiveis = competicoesVisiveis(todas, optIns);
   const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
 
-  const [jogos, palpites] = await Promise.all([
-    atual ? listarJogos({ competicaoId: atual.id }) : Promise.resolve([]),
+  // Substituído por paginação real na próxima task; teto explícito por enquanto.
+  const [{ jogos }, palpites] = await Promise.all([
+    atual
+      ? listarJogos({ competicaoId: atual.id, situacao: "encerrados", limite: 500 })
+      : Promise.resolve({ jogos: [], total: 0 }),
     listarMeusPalpites(),
   ]);
 

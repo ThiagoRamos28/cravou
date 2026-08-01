@@ -14,8 +14,9 @@ export default async function AuditoriaPage({
   await requireAdmin();
   const { jogo } = await searchParams;
 
-  const [jogosFinalizados, palpites, entradas] = await Promise.all([
-    listarJogos({ soEncerrados: true }),
+  const [{ jogos: jogosFinalizados }, palpites, entradas] = await Promise.all([
+    // Teto explícito: é um seletor de jogo para auditar, precisa listar todos.
+    listarJogos({ situacao: "encerrados", limite: 500 }),
     jogo ? listarPalpitesJogo(jogo) : Promise.resolve([]),
     listarLog(),
   ]);
