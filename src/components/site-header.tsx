@@ -8,7 +8,7 @@ import { NavLink } from "@/components/nav-link";
 import { getPerfil } from "@/lib/auth/profile";
 import { avatarPadrao } from "@/lib/avatars";
 import { BottomNav } from "@/components/bottom-nav";
-import { CompeticaoSelector } from "@/components/competicao/competicao-selector";
+import { CompeticaoSelectorSlot } from "@/components/competicao/competicao-selector-slot";
 import {
   listarCompeticoes,
   meusOptIns,
@@ -58,7 +58,7 @@ export async function SiteHeader() {
             )}
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            {atual && <CompeticaoSelector competicoes={visiveis} selecionadaId={atual.id} />}
+            {atual && <CompeticaoSelectorSlot competicoes={visiveis} selecionadaId={atual.id} />}
             {perfil && (
               <Link
                 href="/perfil/competicoes"
