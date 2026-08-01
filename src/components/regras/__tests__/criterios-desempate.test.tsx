@@ -15,6 +15,6 @@ describe("CriteriosDesempate", () => {
 
   it("explica o que acontece no empate total", () => {
     render(<CriteriosDesempate />);
-    expect(screen.getByText(/divide a posição/i)).toBeInTheDocument();
+    expect(screen.getByText(/divide o título de campeão do mês/i)).toBeInTheDocument();
   });
 });

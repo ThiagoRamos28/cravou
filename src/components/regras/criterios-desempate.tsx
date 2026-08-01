@@ -14,7 +14,8 @@ export function CriteriosDesempate() {
         ))}
       </ol>
       <p className="mt-3">
-        Quem empatar nos seis divide a posição — inclusive o título de campeão do mês.
+        Quem empatar nos seis divide o título de campeão do mês; na tabela, a ordem entre
+        eles é alfabética.
       </p>
     </div>
   );
