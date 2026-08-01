@@ -20,10 +20,18 @@ export function CompeticaoTabs({
   const abas = ativas.length > 0 ? ativas : competicoes;
   const anteriores = competicoes.filter((c) => !abas.includes(c));
 
-  function selecionar(comp: Competicao) {
+  function selecionar(slug: string) {
     // Mesmo formato de cookie do seletor do header — 1 ano, escopo raiz.
-    document.cookie = `${COOKIE_COMPETICAO}=${comp.slug}; path=/; max-age=31536000; samesite=lax`;
+    document.cookie = `${COOKIE_COMPETICAO}=${slug}; path=/; max-age=31536000; samesite=lax`;
     router.refresh();
+  }
+
+  // Handler nomeado e referenciado diretamente (não uma arrow inline por item):
+  // o slug vem do data-attribute do próprio botão via `e.currentTarget`, então
+  // não há closure por item de `.map()` capturando a variável de iteração.
+  function aoClicarAba(e: React.MouseEvent<HTMLButtonElement>) {
+    const slug = e.currentTarget.dataset.slug;
+    if (slug) selecionar(slug);
   }
 
   function classes(selecionada: boolean) {
@@ -43,7 +51,8 @@ export function CompeticaoTabs({
             type="button"
             role="tab"
             aria-selected={c.id === selecionadaId}
-            onClick={() => selecionar(c)}
+            data-slug={c.slug}
+            onClick={aoClicarAba}
             className={classes(c.id === selecionadaId)}
           >
             {c.nome}
@@ -61,7 +70,8 @@ export function CompeticaoTabs({
               type="button"
               role="tab"
               aria-selected={c.id === selecionadaId}
-              onClick={() => selecionar(c)}
+              data-slug={c.slug}
+              onClick={aoClicarAba}
               className={`cursor-pointer rounded-lg px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                 c.id === selecionadaId
                   ? "bg-muted font-semibold text-foreground"
