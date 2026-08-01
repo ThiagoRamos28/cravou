@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { MatchCard } from "@/components/jogos/match-card";
 import { JogosFiltro } from "@/components/jogos/jogos-filtro";
+import { JogosLista } from "@/components/jogos/jogos-lista";
 import { NovidadesModal } from "@/components/novidades-modal";
 import { getSessao } from "@/lib/auth/profile";
 import { listarJogos, listarFormaCompeticao } from "@/lib/matches";
@@ -20,16 +20,22 @@ import {
 export default async function JogosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ soAbertos?: string; encerrados?: string }>;
+  searchParams: Promise<{
+    situacao?: string;
+    de?: string;
+    ate?: string;
+    ordem?: string;
+  }>;
 }) {
   const sessao = await getSessao();
   if (!sessao) redirect("/entrar");
 
-  const { soAbertos, encerrados } = await searchParams;
+  const sp = await searchParams;
   // Padrão: jogos que ainda não terminaram, a menos que se peça outra coisa.
-  // A Task 3 troca estes searchParams por `situacao` direta.
   const situacao: Situacao =
-    encerrados === "1" ? "encerrados" : soAbertos === "0" ? "todos" : "a_fazer";
+    sp.situacao === "encerrados" || sp.situacao === "todos" ? sp.situacao : "a_fazer";
+  const ordem: "asc" | "desc" = sp.ordem === "desc" ? "desc" : "asc";
+  const { de, ate } = sp;
 
   const [todas, optIns, cookieStore] = await Promise.all([
     listarCompeticoes(),
@@ -40,11 +46,13 @@ export default async function JogosPage({
   const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
   const participando = atual ? optIns.includes(atual.slug) : false;
 
+  const filtro = atual
+    ? { competicaoId: atual.id, situacao, de, ate, ordem }
+    : null;
+
   const minutosCorte = await getMinutosCorte();
   const [{ jogos }, palpites] = await Promise.all([
-    atual
-      ? listarJogos({ competicaoId: atual.id, situacao, limite: 500 })
-      : Promise.resolve({ jogos: [], total: 0 }),
+    filtro ? listarJogos(filtro) : Promise.resolve({ jogos: [], total: 0 }),
     listarMeusPalpites(),
   ]);
 
@@ -76,32 +84,17 @@ export default async function JogosPage({
           </div>
         ) : (
           <>
-            <JogosFiltro
-              soAbertos={situacao === "a_fazer"}
-              soEncerrados={situacao === "encerrados"}
+            <JogosFiltro situacao={situacao} ordem={ordem} de={de} ate={ate} />
+            {/* O `key` é obrigatório: sem ele o useState interno da lista ignora a nova
+                primeira página e a tela mantém os jogos do filtro anterior (59c2f38). */}
+            <JogosLista
+              key={`${filtro!.competicaoId}|${situacao}|${de ?? ""}|${ate ?? ""}|${ordem}`}
+              jogosIniciais={jogos}
+              palpites={palpites}
+              minutosCorte={minutosCorte}
+              formaPorTime={formaPorTime}
+              filtro={filtro!}
             />
-            {jogos.length === 0 ? (
-              <p className="text-muted-foreground">
-                {situacao === "a_fazer"
-                  ? "Nenhum jogo aberto para palpite no momento."
-                  : situacao === "encerrados"
-                    ? "Nenhum jogo encerrado ainda."
-                    : "Nenhum jogo encontrado."}
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {jogos.map((j) => (
-                  <MatchCard
-                    key={j.id}
-                    match={j}
-                    palpite={palpites[j.id]}
-                    minutosCorte={minutosCorte}
-                    formaCasa={formaPorTime.get(j.time_casa) ?? []}
-                    formaFora={formaPorTime.get(j.time_fora) ?? []}
-                  />
-                ))}
-              </div>
-            )}
           </>
         )}
       </main>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
+import { FiltroPeriodo, useNavegarFiltro } from "@/components/jogos/filtro-periodo";
+import type { Situacao } from "@/lib/jogos/filtros";
 
 function chip(ativo: boolean) {
   return `cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -10,51 +11,44 @@ function chip(ativo: boolean) {
   }`;
 }
 
+// "A fazer" em vez de "Abertos": o recorte é `status in ('agendado','ao_vivo')`, ou seja
+// tudo que ainda não terminou — inclusive jogo cujo prazo de palpite já fechou e que só
+// aguarda resultado. Chamar isso de "Abertos" era impreciso.
+const SITUACOES: { valor: Situacao; label: string }[] = [
+  { valor: "a_fazer", label: "A fazer" },
+  { valor: "encerrados", label: "Encerrados" },
+  { valor: "todos", label: "Todos" },
+];
+
 export function JogosFiltro({
-  soAbertos = false,
-  soEncerrados = false,
+  situacao,
+  ordem,
+  de,
+  ate,
 }: {
-  soAbertos?: boolean;
-  soEncerrados?: boolean;
+  situacao: Situacao;
+  ordem: "asc" | "desc";
+  de?: string;
+  ate?: string;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-
-  function toggleAbertos() {
-    const params = new URLSearchParams();
-    if (soAbertos) {
-      params.set("soAbertos", "0"); // opt-out do padrão — mostra todos
-    }
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
-  }
-
-  function toggleEncerrados() {
-    const params = new URLSearchParams();
-    if (!soEncerrados) params.set("encerrados", "1");
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
-  }
+  const navegar = useNavegarFiltro();
 
   return (
-    <div className="mb-6 flex flex-wrap gap-2" role="group" aria-label="Filtrar jogos">
-      <button
-        type="button"
-        onClick={toggleAbertos}
-        aria-current={soAbertos ? "true" : undefined}
-        className={chip(soAbertos)}
-      >
-        Abertos
-      </button>
-
-      <button
-        type="button"
-        onClick={toggleEncerrados}
-        aria-current={soEncerrados ? "true" : undefined}
-        className={chip(soEncerrados)}
-      >
-        Encerrados
-      </button>
+    <div className="mb-6 flex flex-col gap-3">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar jogos">
+        {SITUACOES.map((s) => (
+          <button
+            key={s.valor}
+            type="button"
+            onClick={() => navegar({ situacao: s.valor })}
+            aria-current={situacao === s.valor ? "true" : undefined}
+            className={chip(situacao === s.valor)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <FiltroPeriodo ordem={ordem} de={de} ate={ate} />
     </div>
   );
 }
