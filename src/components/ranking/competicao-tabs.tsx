@@ -18,7 +18,7 @@ export function CompeticaoTabs({
   // Sem nenhuma ativa visível, todas viram aba: um usuário com opt-in só numa
   // competição encerrada ficaria sem controle nenhum.
   const abas = ativas.length > 0 ? ativas : competicoes;
-  const anteriores = competicoes.filter((c) => !abas.includes(c));
+  const anteriores = competicoes.filter((c) => !abas.some((a) => a.id === c.id));
 
   function selecionar(slug: string) {
     // Mesmo formato de cookie do seletor do header — 1 ano, escopo raiz.
