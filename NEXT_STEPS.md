@@ -1,6 +1,50 @@
 # Próximos passos — Cravou!
 
-Última atualização: 2026-07-17 fim de sessão (branch `master` — tudo mergeado e deployado)
+Última atualização: 2026-07-31 (branch `feat/jogos-adiados` — Tasks 1-5 completas, validadas em
+produção; falta só o merge para `master`)
+
+## Jogos adiados, cancelados e órfãos — entregue e validado (2026-07-31)
+
+Spec `docs/superpowers/specs/2026-07-31-jogos-adiados-design.md`, plano
+`docs/superpowers/plans/2026-07-31-jogos-adiados.md`, ledger
+`.superpowers/sdd/2026-07-31-jogos-adiados/progress.md`. 5 tasks:
+
+1. `estadoDePendencia` (função pura) traduz `match_status` da FlashScore em
+   `finalizado | adiado | cancelado | null`.
+2. Migration 0025 (aplicada em prod): estados `adiado`/`cancelado` na constraint,
+   `predictions_select_started_matches` fecha o vazamento (jogo adiado/cancelado não libera
+   palpites alheios mesmo com `inicio_em` no passado), `ranking()` ignora cancelados, backfill
+   dos 4 jogos do Brasileirão (29/07) para `adiado`.
+3. `/jogos` e o composer do feed escondem `adiado`/`cancelado`; `/admin` mostra os dois com selo.
+4. `varrerPendencias`: varredura global no `sync-matches` (alcança competição arquivada — foi o
+   que deixou a final da Copa sem pontuar) + trava que impede o upsert normal de reverter um
+   estado terminal/estacionado de volta a `agendado`.
+5. **Deploy e validação em produção** (`sync-matches` v27 → **v28**). Verificado após o deploy:
+   os 4 jogos do Brasileirão seguem `adiado` (não reverteram), zero flip-flop no `audit_log`,
+   resposta do sync com `pendencias.pendentes: 0`. Relatório completo em
+   `.superpowers/sdd/2026-07-31-jogos-adiados/task-5-report.md`.
+
+**Pendente:** só o Step 5 do brief da Task 5 (fumaça visual em `/jogos`, `/admin` e `/ranking`
+logado como `thiagorc85@gmail.com`, via link mágico) — não feito por exigir login humano e
+esbarrar no rate limit por hora do Supabase. E o merge de `feat/jogos-adiados` para `master`.
+
+### Fila de specs derivadas da sessão de 2026-07-31
+
+Ordem acordada: **1. adiados** → 2. listagens → 3. ranking mensal → 4. alertas. Animações e
+"cara divertida" ficam **fora da fila** (por último, sem posição numerada — não faz sentido
+animar telas que ainda vão mudar de estrutura nas specs 2-4).
+
+1. ✅ **Adiados, cancelados e órfãos** — entregue acima.
+2. ⬜ **Listagens** (próxima): paginação, filtro de data e ordenação em `/jogos` e `/historico`;
+   também é onde a regra feia `soAbertos` ([matches.ts:90-99](src/lib/matches.ts)) deve ser
+   limpa (deliberadamente não tocada nesta sessão para não sobrepor as duas specs).
+3. ⬜ **Ranking mensal** do Brasileirão — ver detalhe na seção 1 abaixo (ideia já desenhada,
+   reaproveita o mecanismo do sub-seletor T1/T2/Geral da Copa).
+4. ⬜ **Alertas** — avisar a galera quando um jogo é adiado ou remarcado.
+- ⬜ Animações / "cara divertida" — fora da fila numerada, retomar só depois que as telas de
+  listagem/ranking estabilizarem de estrutura.
+
+---
 
 **Nesta sessão (pós-forma-recente):** corrigimos **dois bugs de ranking** relatados pelo
 Thiago e limpamos a identidade da Copa. Antes: `feat/multi-competicao` (commit `fb8b86f`),
