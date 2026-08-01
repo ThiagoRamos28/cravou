@@ -1,9 +1,35 @@
 # Próximos passos — Cravou!
 
-Última atualização: 2026-07-31 (branch `feat/jogos-adiados` — Tasks 1-5 completas, validadas em
-produção; falta só o merge para `master`)
+Última atualização: 2026-07-31 (spec 1 **mergeada** em `master` — merge `84455c5`; spec 2 na
+branch `feat/listagens-jogos`, 6 tasks completas, aguardando merge)
 
-## Jogos adiados, cancelados e órfãos — entregue e validado (2026-07-31)
+## Listagens de jogos: data, ordenação e paginação — spec 2 entregue (2026-07-31)
+
+Spec `docs/superpowers/specs/2026-07-31-listagens-jogos-design.md`, plano
+`docs/superpowers/plans/2026-07-31-listagens-jogos.md`. 6 tasks, **271 testes verdes**, build e
+lint sem problema novo. Executada **inline** (sem subagentes — limite mensal de gasto da conta).
+
+1. `src/lib/jogos/filtros.ts` — funções puras `diaSeguinte`, `limitesDeData`,
+   `statusPorSituacao`, mais `JOGOS_POR_PAGINA = 20` em `constantes.ts` (client-safe).
+2. `listarJogos` virou query de verdade: toda opção é cláusula PostgREST, **nada** em memória,
+   e devolve `{ jogos, total }` (total de `count: "exact"`). `minutosCorte` saiu da assinatura.
+3. `/jogos` — chips de situação (**"Abertos" virou "A fazer"**), intervalo de data, inverter
+   ordem, e "Carregar mais". `FiltroPeriodo` + hook `useNavegarFiltro` compartilhados.
+4. `/historico` — cruzamento jogos×palpites saiu do JavaScript para um embed
+   `predictions!inner`; **o resumo roda sobre o conjunto filtrado inteiro** e só a lista pagina.
+5. Landing — `apenasFuturos` + `competicaoId` + checagem de opt-in.
+6. Validação: nenhum `.filter()` sobrou dentro de `listarJogos`; os 5 consumidores adaptados.
+
+**Mudanças de comportamento visíveis:** o chip "Abertos" agora se chama **"A fazer"** e
+significa "não encerrados" (`status in ('agendado','ao_vivo')`) — o que também fecha um buraco
+em que um jogo a 10 min do apito desaparecia da aba. E o **resumo do `/historico` reflete o
+filtro**: filtrar julho mostra os pontos de julho, não o total.
+
+**Dívida que esta spec NÃO pagou:** `matches.rodada` continua vazio no Brasileirão, então não
+existe filtro por rodada. A API expõe o número no `tournament.name`
+(`"Serie A Betano - Round 21"`) — fica para uma spec futura.
+
+## Jogos adiados, cancelados e órfãos — spec 1 entregue e mergeada (2026-07-31)
 
 Spec `docs/superpowers/specs/2026-07-31-jogos-adiados-design.md`, plano
 `docs/superpowers/plans/2026-07-31-jogos-adiados.md`, ledger
@@ -24,9 +50,20 @@ Spec `docs/superpowers/specs/2026-07-31-jogos-adiados-design.md`, plano
    resposta do sync com `pendencias.pendentes: 0`. Relatório completo em
    `.superpowers/sdd/2026-07-31-jogos-adiados/task-5-report.md`.
 
-**Pendente:** só o Step 5 do brief da Task 5 (fumaça visual em `/jogos`, `/admin` e `/ranking`
-logado como `thiagorc85@gmail.com`, via link mágico) — não feito por exigir login humano e
-esbarrar no rate limit por hora do Supabase. E o merge de `feat/jogos-adiados` para `master`.
+**Mergeada em `master`** (merge `84455c5`, push `213abcc..84455c5`), com 239/239 testes no
+resultado mergeado.
+
+**Pendências desta spec:**
+- ⬜ Fumaça visual logado como `thiagorc85@gmail.com` (link mágico; atenção ao rate limit por
+  hora do Supabase): `/jogos` sem os 4 jogos de 29/07, `/admin` com selo "Adiado".
+- ⬜ **A revisão final da branch não rodou** — o limite mensal de gasto da conta derrubou os
+  subagentes. Testes, build e leitura manual do trecho sem cobertura substituíram
+  parcialmente, mas os *minors* adiados nunca foram triados por um revisor. Estão listados em
+  `.superpowers/sdd/2026-07-31-jogos-adiados/progress.md`, preservado de propósito. Pode rodar
+  depois sobre o diff `213abcc..84455c5`.
+- ⬜ Risco residual: `RateLimitError` é engolido no loop de `transicoes` do `sync-matches` — um
+  429 ali grava o placar **com** prorrogação, violando a regra dos 90 minutos, e agora não é
+  mais sobrescrito depois por causa da trava nova. Candidato a spec própria.
 
 ### Fila de specs derivadas da sessão de 2026-07-31
 
@@ -34,13 +71,15 @@ Ordem acordada: **1. adiados** → 2. listagens → 3. ranking mensal → 4. ale
 "cara divertida" ficam **fora da fila** (por último, sem posição numerada — não faz sentido
 animar telas que ainda vão mudar de estrutura nas specs 2-4).
 
-1. ✅ **Adiados, cancelados e órfãos** — entregue acima.
-2. ⬜ **Listagens** (próxima): paginação, filtro de data e ordenação em `/jogos` e `/historico`;
-   também é onde a regra feia `soAbertos` ([matches.ts:90-99](src/lib/matches.ts)) deve ser
-   limpa (deliberadamente não tocada nesta sessão para não sobrepor as duas specs).
-3. ⬜ **Ranking mensal** do Brasileirão — ver detalhe na seção 1 abaixo (ideia já desenhada,
-   reaproveita o mecanismo do sub-seletor T1/T2/Geral da Copa).
-4. ⬜ **Alertas** — avisar a galera quando um jogo é adiado ou remarcado.
+1. ✅ **Adiados, cancelados e órfãos** — entregue e mergeada.
+2. ✅ **Listagens** — entregue na branch `feat/listagens-jogos`. A regra `soAbertos` foi
+   eliminada aqui, como previsto: virou `statusPorSituacao` na query.
+3. ⬜ **Ranking mensal** (próxima) do Brasileirão — ver detalhe na seção mais abaixo. A função
+   `ranking(p_competicao_id, p_periodo)` já aceita `p_periodo`; basta estender o `case` para
+   períodos mensais e o sub-controle oferecer "Geral + um por mês" quando a competição é o
+   Brasileirão. Encaixa no design de abas por competição já fechado (e não implementado).
+4. ⬜ **Alertas** — avisar quem aceitar que tem jogo prestes a começar e ainda sem palpite.
+   Absorve "notificações push". Inclui avisar quando um jogo é adiado ou remarcado.
 - ⬜ Animações / "cara divertida" — fora da fila numerada, retomar só depois que as telas de
   listagem/ranking estabilizarem de estrutura.
 
