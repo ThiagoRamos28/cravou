@@ -151,10 +151,31 @@ A separação:
   linhas magras: barato.
 - **A lista** é paginada, porque é ela que custa renderizar.
 
-O cruzamento sai do JavaScript para o banco: a consulta parte de `predictions` com
-`matches!inner`, filtrando competição e status no servidor, ordenando pela coluna da tabela
-embutida. Isso inverte a direção da query — e é a direção certa para uma tela que é sobre *os
-meus palpites*.
+O cruzamento sai do JavaScript para o banco. A consulta continua **partindo de `matches`** e
+embute os palpites com `!inner`, restrito ao usuário:
+
+```ts
+.from("matches")
+.select(`${COLS}, predictions!inner(palpite_casa, palpite_fora, pontos, pontos_max)`,
+        { count: "exact" })
+.eq("competicao_id", competicaoId)
+.eq("status", "finalizado")
+.eq("predictions.user_id", userId)
+.order("inicio_em", { ascending: false })
+.range(offset, offset + limite - 1)
+```
+
+O `!inner` descarta os jogos em que o usuário não palpitou, e o filtro do usuário garante que o
+embed só traga o palpite dele (a RLS `predictions_select_own` já faria isso; ser explícito é
+defesa em profundidade). Como `predictions.match_id → matches.id` é uma relação um-para-muitos,
+o embed vem como **array de um elemento** — o acesso é `m.predictions[0]`.
+
+**Por que não o contrário.** A tentação é partir de `predictions` e ordenar por
+`matches.inicio_em` com a opção `referencedTable`. Isso **não funciona** e falha em silêncio: o
+doc do PostgREST diz explicitamente que *"ordering with `referencedTable` doesn't affect the
+ordering of the parent table"* — ela ordena o array embutido, não as linhas do pai. As páginas
+sairiam em ordem arbitrária sem erro nenhum. Partindo de `matches`, a ordenação é por coluna do
+próprio pai e o `.range` pagina o que se espera.
 
 ### A landing
 
