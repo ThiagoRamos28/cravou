@@ -22,6 +22,10 @@ export default async function JogosPage({
 }: {
   searchParams: Promise<{
     situacao?: string;
+    // soAbertos/encerrados: parâmetros da tela antiga (pré-listagens-jogos). Sem
+    // `situacao` na URL, um link ou favorito salvo com eles ainda deve funcionar.
+    soAbertos?: string;
+    encerrados?: string;
     de?: string;
     ate?: string;
     ordem?: string;
@@ -31,9 +35,13 @@ export default async function JogosPage({
   if (!sessao) redirect("/entrar");
 
   const sp = await searchParams;
+  const situacaoLegado: Situacao | null =
+    sp.encerrados === "1" ? "encerrados" : sp.soAbertos === "0" ? "todos" : null;
   // Padrão: jogos que ainda não terminaram, a menos que se peça outra coisa.
   const situacao: Situacao =
-    sp.situacao === "encerrados" || sp.situacao === "todos" ? sp.situacao : "a_fazer";
+    sp.situacao === "encerrados" || sp.situacao === "todos"
+      ? sp.situacao
+      : (situacaoLegado ?? "a_fazer");
   const ordem: "asc" | "desc" = sp.ordem === "desc" ? "desc" : "asc";
   const { de, ate } = sp;
 
