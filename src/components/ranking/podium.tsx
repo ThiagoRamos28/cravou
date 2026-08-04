@@ -1,5 +1,5 @@
 import { Crown } from "lucide-react";
-import type { RankingRow } from "@/lib/ranking";
+import type { RankingRow } from "@/lib/ranking-shared";
 import { Reveal } from "@/components/motion/reveal";
 import { avatarPadrao } from "@/lib/avatars";
 

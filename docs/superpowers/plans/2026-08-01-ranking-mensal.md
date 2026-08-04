@@ -19,7 +19,7 @@
 - **Todo clicável leva `cursor-pointer`**, foco visível (`focus-visible:ring`), e precisa funcionar em tema claro **e** escuro.
 - **TDD:** escreva o teste, veja falhar, implemente o mínimo, veja passar, commite. Um commit por unidade.
 - **Toda mensagem de commit termina com:** `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
-- **Rodar a suíte inteira** (`npm test`) antes do commit de cada task, não só o arquivo novo. A baseline atual é **271 testes passando**.
+- **Rodar a suíte inteira** (`npm test`) antes do commit de cada task, não só o arquivo novo. A baseline desta branch (saída de `master`) é **239 testes passando**. O NEXT_STEPS.md fala em 271: aquele número é da branch `feat/listagens-jogos`, que não está aqui.
 - **Nunca remova** o pré-filtro `exists` de `predictions` (migration 0024) nem o `and mm.status <> 'cancelado'` dentro dele (migration 0025) ao reescrever `ranking()`. Cada um conserta um bug real: vazamento de pontos entre competições e jogo cancelado estragando o aproveitamento.
 
 ## Estrutura de arquivos
@@ -604,7 +604,7 @@ Esperado: PASS, 24 testes.
 ```bash
 npm test
 ```
-Esperado: 271 + 24 = **295 passando**, nenhum falhando.
+Esperado: 239 + 24 = **263 passando**, nenhum falhando.
 
 - [ ] **Step 6: Commit**
 
@@ -699,7 +699,7 @@ export async function buscarRanking(
 ```bash
 npm run build && npm test
 ```
-Esperado: build sem erro de tipo; 295 testes passando. Se o build reclamar de importação duplicada em `lib/ranking.ts`, é porque um `export type` local sobrou junto do `export *` — remova o local.
+Esperado: build sem erro de tipo; 263 testes passando. Se o build reclamar de importação duplicada em `lib/ranking.ts`, é porque um `export type` local sobrou junto do `export *` — remova o local.
 
 - [ ] **Step 4: Commit**
 
@@ -1916,7 +1916,7 @@ EOF
 
 Depois da última task, antes de considerar a branch pronta:
 
-- [ ] `npm test` — todos verdes (esperado: 271 da baseline + 48 líquidos = **319**; são 52 casos novos, dos quais 4 substituem os que já existiam em `ranking-content.test.tsx`)
+- [ ] `npm test` — todos verdes (esperado: 239 da baseline + 48 líquidos = **287**; são 52 casos novos, dos quais 4 substituem os que já existiam em `ranking-content.test.tsx`)
 - [ ] `npm run build` — sem erro de tipo
 - [ ] `npm run lint` — sem problema novo
 - [ ] `/ranking` do Brasileirão abre no mês corrente, com abas e faixa

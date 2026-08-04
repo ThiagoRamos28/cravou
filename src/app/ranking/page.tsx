@@ -4,7 +4,13 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { RankingContent } from "@/components/ranking/ranking-content";
 import { getSessao } from "@/lib/auth/profile";
-import { listarRanking } from "@/lib/ranking";
+import {
+  listarRanking,
+  listarMesesRanking,
+  mesCorrenteBRT,
+  mesesVisiveis,
+  type RankingPeriodo,
+} from "@/lib/ranking";
 import {
   listarCompeticoes,
   meusOptIns,
@@ -25,7 +31,21 @@ export default async function RankingPage() {
   const visiveis = competicoesVisiveis(todas, optIns);
   const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
 
-  const linhas = atual ? await listarRanking(atual.id, "geral") : [];
+  // O ano vem do mês em Brasília: em 31/12 às 22h BRT o servidor em UTC já virou o ano.
+  const mesCorrente = mesCorrenteBRT(new Date());
+  const anoCorrente = Number(mesCorrente.slice(0, 4));
+
+  const meses =
+    atual?.formato === "pontos-corridos"
+      ? mesesVisiveis(await listarMesesRanking(atual.id), mesCorrente)
+      : [];
+
+  // Pontos corridos abre no mês corrente; se ele não tem jogo, cai no acumulado.
+  const periodoInicial: RankingPeriodo = meses.some((m) => m.mes === mesCorrente)
+    ? (mesCorrente as RankingPeriodo)
+    : "geral";
+
+  const linhas = atual ? await listarRanking(atual.id, periodoInicial) : [];
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
@@ -40,6 +60,10 @@ export default async function RankingPage() {
             linhasIniciais={linhas}
             meuId={sessao.userId}
             competicao={atual}
+            competicoes={visiveis}
+            meses={meses}
+            periodoInicial={periodoInicial}
+            anoCorrente={anoCorrente}
           />
         ) : (
           <p className="text-muted-foreground">Nenhuma competição disponível.</p>

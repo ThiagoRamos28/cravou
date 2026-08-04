@@ -1,4 +1,4 @@
-import type { RankingRow } from "@/lib/ranking";
+import type { RankingRow } from "@/lib/ranking-shared";
 import { avatarPadrao } from "@/lib/avatars";
 import { COLUNAS_ICONE } from "@/components/ranking/colunas";
 

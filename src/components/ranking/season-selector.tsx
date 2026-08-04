@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
-import type { RankingPeriodo } from "@/lib/ranking";
+import type { RankingPeriodo } from "@/lib/ranking-shared";
 
 const OPCOES: { valor: RankingPeriodo; label: string }[] = [
   { valor: "geral", label: "Ranking Geral" },

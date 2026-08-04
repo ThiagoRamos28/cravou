@@ -1,21 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
+import type { MesRanking, RankingPeriodo, RankingRow } from "@/lib/ranking-shared";
 
-export type RankingRow = {
-  user_id: string;
-  apelido: string | null;
-  avatar_url: string | null;
-  pontos: number;
-  cravadas: number;
-  acertos_saldo: number;
-  acertos_resultado: number;
-  acertos_gols: number;
-  erros: number;
-  palpites_pontuados: number;
-  total_palpites: number;
-  pontos_max_total: number;
-};
-
-export type RankingPeriodo = "geral" | "temporada_1" | "temporada_2";
+// Os tipos e as funções puras moraram aqui até a 0026; foram para o módulo shared para
+// serem importáveis por componentes client. Re-exportados para não quebrar imports.
+export * from "@/lib/ranking-shared";
 
 // Ranking de uma competição, já ordenado. Falha aberta: [] em erro.
 export async function listarRanking(
@@ -29,6 +17,19 @@ export async function listarRanking(
       p_periodo: periodo,
     });
     return (data as RankingRow[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// Meses de uma competição, com jogos/palpites e se já fecharam. Falha aberta: [] em erro.
+export async function listarMesesRanking(competicaoId: string): Promise<MesRanking[]> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.rpc("ranking_meses", {
+      p_competicao_id: competicaoId,
+    });
+    return (data as MesRanking[]) ?? [];
   } catch {
     return [];
   }

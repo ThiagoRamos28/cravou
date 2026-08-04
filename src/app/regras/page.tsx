@@ -2,6 +2,7 @@ import { Target, ArrowLeftRight, Trophy, CircleDot, XCircle } from "lucide-react
 import { cookies } from "next/headers";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { CriteriosDesempate } from "@/components/regras/criterios-desempate";
 import {
   listarCompeticoes,
   meusOptIns,
@@ -125,6 +126,8 @@ export default async function RegrasPage() {
             do início do jogo. Após esse prazo, o palpite fica bloqueado.
           </p>
         </div>
+
+        <CriteriosDesempate />
 
         {ehFases && (
           <>

@@ -1,15 +1,11 @@
 "use server";
 
-import { listarRanking, type RankingPeriodo, type RankingRow } from "@/lib/ranking";
-
-const PERIODOS: RankingPeriodo[] = ["geral", "temporada_1", "temporada_2"];
+import { listarRanking } from "@/lib/ranking";
+import { normalizarPeriodo, type RankingRow } from "@/lib/ranking-shared";
 
 export async function buscarRanking(
   competicaoId: string,
   periodo: string
 ): Promise<RankingRow[]> {
-  const p: RankingPeriodo = (PERIODOS as string[]).includes(periodo)
-    ? (periodo as RankingPeriodo)
-    : "geral";
-  return listarRanking(competicaoId, p);
+  return listarRanking(competicaoId, normalizarPeriodo(periodo));
 }

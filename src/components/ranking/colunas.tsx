@@ -1,5 +1,5 @@
 import { Target, ArrowLeftRight, Trophy, CircleDot, XCircle, Equal } from "lucide-react";
-import type { RankingRow } from "@/lib/ranking";
+import type { RankingRow } from "@/lib/ranking-shared";
 
 export type ColIcone = {
   icon: React.ReactNode;
