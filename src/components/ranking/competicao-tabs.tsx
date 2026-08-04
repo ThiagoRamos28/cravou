@@ -1,5 +1,6 @@
 "use client";
 
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { COOKIE_COMPETICAO, type Competicao } from "@/lib/competicoes-shared";
 
@@ -11,6 +12,7 @@ export function CompeticaoTabs({
   selecionadaId: string;
 }) {
   const router = useRouter();
+  const [pendente, iniciarTransicao] = useTransition();
 
   if (competicoes.length <= 1) return null;
 
@@ -23,7 +25,7 @@ export function CompeticaoTabs({
   function selecionar(slug: string) {
     // Mesmo formato de cookie do seletor do header — 1 ano, escopo raiz.
     document.cookie = `${COOKIE_COMPETICAO}=${slug}; path=/; max-age=31536000; samesite=lax`;
-    router.refresh();
+    iniciarTransicao(() => router.refresh());
   }
 
   // Handler nomeado e referenciado diretamente (não uma arrow inline por item):
@@ -44,7 +46,12 @@ export function CompeticaoTabs({
 
   return (
     <div className="mb-6">
-      <div role="tablist" aria-label="Competição" className="flex flex-wrap gap-1">
+      <div
+        role="tablist"
+        aria-label="Competição"
+        aria-busy={pendente}
+        className={`flex flex-wrap gap-1 transition-opacity ${pendente ? "opacity-60" : ""}`}
+      >
         {abas.map((c) => (
           <button
             key={c.id}
@@ -53,6 +60,7 @@ export function CompeticaoTabs({
             aria-selected={c.id === selecionadaId}
             data-slug={c.slug}
             onClick={aoClicarAba}
+            disabled={pendente}
             className={classes(c.id === selecionadaId)}
           >
             {c.nome}
@@ -60,7 +68,9 @@ export function CompeticaoTabs({
         ))}
       </div>
       {anteriores.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div
+          className={`mt-3 flex flex-wrap items-center gap-2 transition-opacity ${pendente ? "opacity-60" : ""}`}
+        >
           <span className="text-xs uppercase tracking-wide text-muted-foreground">
             Temporadas anteriores
           </span>
@@ -72,6 +82,7 @@ export function CompeticaoTabs({
               aria-selected={c.id === selecionadaId}
               data-slug={c.slug}
               onClick={aoClicarAba}
+              disabled={pendente}
               className={`cursor-pointer rounded-lg px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                 c.id === selecionadaId
                   ? "bg-muted font-semibold text-foreground"
