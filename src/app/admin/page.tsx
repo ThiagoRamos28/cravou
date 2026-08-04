@@ -12,7 +12,13 @@ async function handleDispararSync() {
 
 export default async function AdminPage() {
   await requireAdmin();
-  const jogos = await listarJogos({ incluirNaoJogaveis: true });
+  // Teto explícito em vez do default de página: o admin precisa ver tudo de uma vez para
+  // corrigir placar à mão, e um truncamento silencioso aqui esconderia jogos.
+  const { jogos } = await listarJogos({
+    situacao: "todos",
+    incluirNaoJogaveis: true,
+    limite: 500,
+  });
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">

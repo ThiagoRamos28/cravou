@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resumoHistorico, type ItemHistorico } from "@/lib/historico";
+import { resumoHistorico, paraResumo, type ItemHistorico } from "@/lib/historico";
 import type { Match } from "@/lib/matches";
 
 const m = (id: string): Match => ({
@@ -16,7 +16,7 @@ const itens: ItemHistorico[] = [
 
 describe("resumoHistorico", () => {
   it("soma pontos, conta cravadas e calcula aproveitamento", () => {
-    const r = resumoHistorico(itens);
+    const r = resumoHistorico(paraResumo(itens));
     expect(r.totalPontos).toBe(15);
     expect(r.cravadas).toBe(1);
     expect(r.aproveitamento).toBe(0.5); // 15 / (3*10)
@@ -43,7 +43,7 @@ describe("resumoHistorico", () => {
       pontos: 0,
       pontosMax: 15,
     };
-    const r = resumoHistorico([antigo, novo]);
+    const r = resumoHistorico(paraResumo([antigo, novo]));
     expect(r.cravadas).toBe(1);
     expect(r.aproveitamento).toBe(0.4); // 10 / (10 + 15) = 0.4
   });

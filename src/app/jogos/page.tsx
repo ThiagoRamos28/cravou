@@ -2,11 +2,12 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { MatchCard } from "@/components/jogos/match-card";
 import { JogosFiltro } from "@/components/jogos/jogos-filtro";
+import { JogosLista } from "@/components/jogos/jogos-lista";
 import { NovidadesModal } from "@/components/novidades-modal";
 import { getSessao } from "@/lib/auth/profile";
 import { listarJogos, listarFormaCompeticao } from "@/lib/matches";
+import type { Situacao } from "@/lib/jogos/filtros";
 import { listarMeusPalpites, getMinutosCorte } from "@/lib/predictions";
 import {
   listarCompeticoes,
@@ -19,15 +20,30 @@ import {
 export default async function JogosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ soAbertos?: string; encerrados?: string }>;
+  searchParams: Promise<{
+    situacao?: string;
+    // soAbertos/encerrados: parâmetros da tela antiga (pré-listagens-jogos). Sem
+    // `situacao` na URL, um link ou favorito salvo com eles ainda deve funcionar.
+    soAbertos?: string;
+    encerrados?: string;
+    de?: string;
+    ate?: string;
+    ordem?: string;
+  }>;
 }) {
   const sessao = await getSessao();
   if (!sessao) redirect("/entrar");
 
-  const { soAbertos, encerrados } = await searchParams;
-  const soEncerradosAtivo = encerrados === "1";
-  // Padrão: mostrar jogos abertos/ao vivo, a menos que o usuário opte por ver todos (?soAbertos=0)
-  const soAbertosAtivo = !soEncerradosAtivo && soAbertos !== "0";
+  const sp = await searchParams;
+  const situacaoLegado: Situacao | null =
+    sp.encerrados === "1" ? "encerrados" : sp.soAbertos === "0" ? "todos" : null;
+  // Padrão: jogos que ainda não terminaram, a menos que se peça outra coisa.
+  const situacao: Situacao =
+    sp.situacao === "encerrados" || sp.situacao === "todos"
+      ? sp.situacao
+      : (situacaoLegado ?? "a_fazer");
+  const ordem: "asc" | "desc" = sp.ordem === "desc" ? "desc" : "asc";
+  const { de, ate } = sp;
 
   const [todas, optIns, cookieStore] = await Promise.all([
     listarCompeticoes(),
@@ -38,16 +54,13 @@ export default async function JogosPage({
   const atual = resolverCompeticao(visiveis, cookieStore.get(COOKIE_COMPETICAO)?.value);
   const participando = atual ? optIns.includes(atual.slug) : false;
 
+  const filtro = atual
+    ? { competicaoId: atual.id, situacao, de, ate, ordem }
+    : null;
+
   const minutosCorte = await getMinutosCorte();
-  const [jogos, palpites] = await Promise.all([
-    atual
-      ? listarJogos({
-          soAbertos: soAbertosAtivo,
-          soEncerrados: soEncerradosAtivo,
-          minutosCorte,
-          competicaoId: atual.id,
-        })
-      : Promise.resolve([]),
+  const [{ jogos }, palpites] = await Promise.all([
+    filtro ? listarJogos(filtro) : Promise.resolve({ jogos: [], total: 0 }),
     listarMeusPalpites(),
   ]);
 
@@ -79,29 +92,17 @@ export default async function JogosPage({
           </div>
         ) : (
           <>
-            <JogosFiltro soAbertos={soAbertosAtivo} soEncerrados={soEncerradosAtivo} />
-            {jogos.length === 0 ? (
-              <p className="text-muted-foreground">
-                {soAbertosAtivo
-                  ? "Nenhum jogo aberto para palpite no momento."
-                  : soEncerradosAtivo
-                    ? "Nenhum jogo encerrado ainda."
-                    : "Nenhum jogo encontrado."}
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {jogos.map((j) => (
-                  <MatchCard
-                    key={j.id}
-                    match={j}
-                    palpite={palpites[j.id]}
-                    minutosCorte={minutosCorte}
-                    formaCasa={formaPorTime.get(j.time_casa) ?? []}
-                    formaFora={formaPorTime.get(j.time_fora) ?? []}
-                  />
-                ))}
-              </div>
-            )}
+            <JogosFiltro situacao={situacao} ordem={ordem} de={de} ate={ate} />
+            {/* O `key` é obrigatório: sem ele o useState interno da lista ignora a nova
+                primeira página e a tela mantém os jogos do filtro anterior (59c2f38). */}
+            <JogosLista
+              key={`${filtro!.competicaoId}|${situacao}|${de ?? ""}|${ate ?? ""}|${ordem}`}
+              jogosIniciais={jogos}
+              palpites={palpites}
+              minutosCorte={minutosCorte}
+              formaPorTime={formaPorTime}
+              filtro={filtro!}
+            />
           </>
         )}
       </main>

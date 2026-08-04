@@ -6,6 +6,21 @@ import { validar } from "@/lib/auth/validation";
 import { palpiteSchema } from "@/lib/palpites/validation";
 import { palpiteAberto } from "@/lib/palpites/corte";
 import { getMinutosCorte } from "@/lib/predictions";
+import { listarJogos, type Match } from "@/lib/matches";
+import type { Situacao } from "@/lib/jogos/filtros";
+
+// Página seguinte da listagem de jogos. A lista client acumula o que vem daqui.
+export async function carregarMaisJogos(params: {
+  competicaoId: string;
+  situacao: Situacao;
+  de?: string;
+  ate?: string;
+  ordem: "asc" | "desc";
+  offset: number;
+}): Promise<Match[]> {
+  const { jogos } = await listarJogos(params);
+  return jogos;
+}
 
 export type EstadoPalpite = {
   erro?: string;

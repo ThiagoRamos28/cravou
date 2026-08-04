@@ -1,53 +1,79 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { JogosFiltro } from "@/components/jogos/jogos-filtro";
 
 const push = vi.fn();
+// A URL atual é lida por useSearchParams — é o que permite ao hook de navegação preservar
+// parâmetros que o componente nem conhece. Cada teste ajusta `searchParamsAtual`.
+let searchParamsAtual = "";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
   usePathname: () => "/jogos",
+  useSearchParams: () => new URLSearchParams(searchParamsAtual),
 }));
 
+import { JogosFiltro } from "@/components/jogos/jogos-filtro";
+
 describe("JogosFiltro", () => {
-  it("renderiza os botões 'Palpitar agora' e 'Encerrados'", () => {
-    render(<JogosFiltro />);
-    expect(screen.getByRole("button", { name: /abertos/i })).toBeInTheDocument();
+  beforeEach(() => {
+    push.mockReset();
+    searchParamsAtual = "";
+  });
+
+  it("marca a situação atual", () => {
+    render(<JogosFiltro situacao="a_fazer" ordem="asc" />);
+    expect(screen.getByRole("button", { name: /a fazer/i })).toHaveAttribute(
+      "aria-current",
+      "true"
+    );
+  });
+
+  it("oferece as três situações", () => {
+    render(<JogosFiltro situacao="a_fazer" ordem="asc" />);
+    expect(screen.getByRole("button", { name: /a fazer/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /encerrados/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /todos/i })).toBeInTheDocument();
   });
 
-  it("marca 'Palpitar agora' como ativo quando soAbertos=true", () => {
-    render(<JogosFiltro soAbertos />);
-    expect(screen.getByRole("button", { name: /abertos/i })).toHaveAttribute(
-      "aria-current",
-      "true"
+  it("clicar em Encerrados navega para a situação encerrados", async () => {
+    render(<JogosFiltro situacao="a_fazer" ordem="asc" />);
+    await userEvent.click(screen.getByRole("button", { name: /encerrados/i }));
+    expect(push).toHaveBeenCalledWith("/jogos?situacao=encerrados");
+  });
+
+  it("inverter a ordem preserva os outros filtros", async () => {
+    searchParamsAtual = "situacao=encerrados&de=2026-07-01";
+    render(<JogosFiltro situacao="encerrados" ordem="asc" de="2026-07-01" />);
+    await userEvent.click(screen.getByRole("button", { name: /inverter ordem/i }));
+    const url = push.mock.calls[0][0] as string;
+    expect(url).toContain("ordem=desc");
+    expect(url).toContain("situacao=encerrados");
+    expect(url).toContain("de=2026-07-01");
+  });
+
+  it("escolher data navega preservando a situação", async () => {
+    searchParamsAtual = "situacao=encerrados";
+    render(<JogosFiltro situacao="encerrados" ordem="asc" />);
+    await userEvent.type(screen.getByLabelText("De"), "2026-07-15");
+    const url = push.mock.calls.at(-1)?.[0] as string;
+    expect(url).toContain("de=2026-07-15");
+    expect(url).toContain("situacao=encerrados");
+  });
+
+  it("limpar remove as datas e mantém a situação", async () => {
+    searchParamsAtual = "situacao=encerrados&de=2026-07-01&ate=2026-07-31";
+    render(
+      <JogosFiltro situacao="encerrados" ordem="asc" de="2026-07-01" ate="2026-07-31" />
     );
+    await userEvent.click(screen.getByRole("button", { name: /limpar/i }));
+    const url = push.mock.calls[0][0] as string;
+    expect(url).not.toContain("de=");
+    expect(url).not.toContain("ate=");
+    expect(url).toContain("situacao=encerrados");
   });
 
-  it("marca 'Encerrados' como ativo quando soEncerrados=true", () => {
-    render(<JogosFiltro soEncerrados />);
-    expect(screen.getByRole("button", { name: /encerrados/i })).toHaveAttribute(
-      "aria-current",
-      "true"
-    );
-  });
-
-  it("não exibe badge nem destaque quando 'Abertos' está inativo", () => {
-    render(<JogosFiltro />);
-    const abertos = screen.getByRole("button", { name: /abertos/i });
-    expect(abertos.textContent).toBe("Abertos");
-    expect(abertos.className).not.toMatch(/accent/);
-  });
-
-  it("volta ao default (abertos) ao clicar em 'Abertos' quando inativo", async () => {
-    render(<JogosFiltro />);
-    await userEvent.click(screen.getByRole("button", { name: /abertos/i }));
-    expect(push).toHaveBeenCalledWith("/jogos");
-  });
-
-  it("navega com soAbertos=0 ao clicar em 'Abertos' quando já está ativo", async () => {
-    render(<JogosFiltro soAbertos />);
-    await userEvent.click(screen.getByRole("button", { name: /abertos/i }));
-    expect(push).toHaveBeenCalledWith("/jogos?soAbertos=0");
+  it("não mostra Limpar quando não há data escolhida", () => {
+    render(<JogosFiltro situacao="a_fazer" ordem="asc" />);
+    expect(screen.queryByRole("button", { name: /limpar/i })).toBeNull();
   });
 });
