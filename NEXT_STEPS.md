@@ -11,7 +11,6 @@
 | `master` | Sugestões de placar via Telegram (Edge Function `sugerir-placares`, uso pessoal do admin) | Em produção, cron ativo; teste manual recebido. **1º envio real ainda não observado** (§0) |
 | — | Spec 4 (alertas de jogo sem palpite) | Não iniciada — decisões de design em aberto (§1) |
 | — | Animações / "cara divertida" | Não iniciada — fora da fila numerada, fica para o fim |
-| `feat/multi-competicao`, `feat/visual-ux-adjustments` | Branches antigas ainda existentes no repo | Não investigadas nesta sessão — checar se já foram incorporadas em `master` por outro caminho antes de mexer ou apagar |
 
 Migrations aplicadas em produção até `0028` (`sugestoes_placar`). A `0029` (cron) **não** foi
 aplicada como migration: o job `sugerir-placares` foi criado por SQL copiando o comando do job
