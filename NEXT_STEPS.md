@@ -18,8 +18,6 @@ aplicada como migration: o job `sugerir-placares` foi criado por SQL copiando o 
 como documentação, com placeholder `<CRON_SECRET>`. Deploy `sync-matches` em `v28`,
 `sugerir-placares` em `v1`.
 
-`.gitignore` tem uma alteração local **não commitada** (`/.agents/`, `/skills-lock.json`),
-anterior a esta sessão e não mexida por ela — decidir se entra no repo.
 
 ## 0. Conferir o 1º envio real das sugestões ← começar por aqui
 
