@@ -43,6 +43,8 @@ next-env.d.ts
 
 # local dev tooling (skills, agent scratch) — not app code
 /.claude/skills/
+/.agents/
+/skills-lock.json
 /.superpowers/
 __pycache__/
 *.pyc
