@@ -101,4 +101,10 @@ Ao finalizar uma branch/feature com `superpowers:finishing-a-development-branch`
 - Pontuação: placar exato = 10 pts; só o resultado (V/E/D) = 5 pts; erro = 0 (configurável em `app_config`).
 - Corte do palpite: editável até `inicio_em − minutos_corte` (default 10 min), validado no servidor.
 - Resultados: sync automática da API-Football (cron) como principal; admin corrige placar manualmente como fallback.
+- **Sugestões de placar (uso pessoal do admin, fora da UI):** a Edge Function `sugerir-placares`
+  (cron `5,20,35,50 * * * *`, 5 min após o `sync-matches`) manda no Telegram, ~2h antes de cada
+  jogo, 3 placares sugeridos por um modelo Poisson/Dixon-Coles (odds de `matches.odds` + forma via
+  `matches/h2h`, 1 chamada de API por jogo), otimizando a pontuação esperada pela regra de
+  `app_config`. Histórico em `sugestoes_placar`. Secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+  Teste manual: `POST .../sugerir-placares?forcar=<api_fixture_id>` (não grava a sugestão).
 - **Fase mata-mata (jogos com possível prorrogação):** a pontuação sempre considera o placar dos **90 minutos** (tempo normal), desconsiderando gols da prorrogação. A sincronização automática (`supabase/functions/sync-matches`) calcula isso sozinha a partir do endpoint `matches/details` da FlashScore API (soma `1st_half + 2nd_half`), gravando também `matches.decisao` (`'normal' | 'prorrogacao' | 'penaltis'`) e o placar de pênaltis quando aplicável — não é mais necessária correção manual nesses casos.
